@@ -21,6 +21,7 @@ dev = [
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "ruff>=0.15.5",
+    "types-pyyaml>=6.0.12.20250915",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -28,3 +29,7 @@ packages = ["src/easyconfig"]
 
 [tool.hatch.build.targets.wheel.sources]
 "src" = ""
+
+[tool.mypy]
+strict = true
+install_types = true

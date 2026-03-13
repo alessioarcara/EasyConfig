@@ -1,7 +1,9 @@
-import pytest
-from pydantic import ValidationError
+from typing import Any
 
-from easyconfig.parser import SchemaParser
+import pytest
+from pydantic import BaseModel, ValidationError
+
+from easyconfig.parser import SchemaError, SchemaParser
 
 config = """
 wandb_run_name: str
@@ -10,10 +12,11 @@ model:
 training:
   batch_size: int = 32
   num_epochs: int = 10
+  shuffle: bool = true
 """
 
 
-def test_should_generate_pydantic_model_from_yaml_string():
+def test_should_generate_pydantic_model_from_yaml_string() -> None:
     model = SchemaParser.parse(config)
     input_data = {
         "training": {"batch_size": 64},
@@ -21,12 +24,27 @@ def test_should_generate_pydantic_model_from_yaml_string():
         "wandb_run_name": "test_run",
     }
 
-    instance = model.validate(input_data)
+    instance: Any = model.model_validate(input_data)
 
+    assert issubclass(model, BaseModel)
     assert instance.training.batch_size == 64
     assert instance.training.num_epochs == 10
     assert instance.model.hidden_dims == [128, 64]
     assert instance.wandb_run_name == "test_run"
+    assert instance.training.shuffle is True
+
+
+def test_should_raise_schema_error_for_unsupported_type() -> None:
+    invalid_config = """
+    training:
+        early_stopping:
+            patience: unknown_type
+    """
+
+    with pytest.raises(SchemaError) as exc_info:
+        SchemaParser.parse(invalid_config)
+
+    assert "training.early_stopping.patience" in str(exc_info.value)
 
 
 @pytest.mark.parametrize(
@@ -49,8 +67,25 @@ def test_should_generate_pydantic_model_from_yaml_string():
         ),
     ],
 )
-def test_should_raise_validation_error(input_data):
+def test_should_raise_validation_error(input_data: dict[str, Any]) -> None:
     model = SchemaParser.parse(config)
 
     with pytest.raises(ValidationError):
-        model.validate(input_data)
+        model.model_validate(input_data)
+
+
+def test_should_handle_union_types() -> None:
+    union_config = """
+    dropout: float | null
+    """
+
+    model = SchemaParser.parse(union_config)
+
+    instance1: Any = model.model_validate({"dropout": 0.2})
+    assert instance1.dropout == 0.2
+
+    instance2: Any = model.model_validate({})
+    assert instance2.dropout is None
+
+    with pytest.raises(ValidationError):
+        model.model_validate({"dropout": "invalid"})
