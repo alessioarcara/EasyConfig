@@ -1,12 +1,19 @@
+[build-system]
+requires = ["hatchling>=1.29.0"]
+build-backend = "hatchling.build"
+
 [project]
 name = "easyconfig"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+authors = [
+    { name = "Alessio Arcara", email = "alessio.arcara@studio.unibo.it" },
+]
+dependencies = ["pydantic>=2.12.5"]
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "mkdocs-material>=9.7.5",
     "mkdocstrings[python]>=1.0.3",
@@ -14,4 +21,15 @@ dev = [
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "ruff>=0.15.5",
+    "types-pyyaml>=6.0.12.20250915",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/easyconfig"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[tool.mypy]
+strict = true
+install_types = true
