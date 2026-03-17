@@ -76,7 +76,7 @@ def test_should_raise_validation_error(input_data: dict[str, Any]) -> None:
 
 def test_should_handle_union_types() -> None:
     union_config = """
-    dropout: float | null
+    dropout: float?
     """
 
     model = SchemaParser.parse(union_config)
@@ -89,3 +89,46 @@ def test_should_handle_union_types() -> None:
 
     with pytest.raises(ValidationError):
         model.model_validate({"dropout": "invalid"})
+
+
+def test_should_handle_alias_types() -> None:
+    alias_config = """
+    types:
+        ClassifierHead:
+            num_classes: int
+            hidden_dims: list[int]
+    schema:
+        model:
+            head1: ClassifierHead
+            head2: ClassifierHead
+    """
+
+    model = SchemaParser.parse(alias_config)
+
+    instance: Any = model.model_validate(
+        {
+            "model": {
+                "head1": {"num_classes": 10, "hidden_dims": [64, 32]},
+                "head2": {"num_classes": 5, "hidden_dims": [128]},
+            }
+        }
+    )
+    assert instance.model.head1.num_classes == 10
+    assert instance.model.head1.hidden_dims == [64, 32]
+    assert instance.model.head2.num_classes == 5
+    assert instance.model.head2.hidden_dims == [128]
+
+
+def test_should_handle_forward_references() -> None:
+    alias_config = """
+    types:
+        A: B
+        B: int
+    schema:
+        num_classes: A
+    """
+
+    model = SchemaParser.parse(alias_config)
+
+    instance: Any = model.model_validate({"num_classes": 10})
+    assert instance.num_classes == 10
