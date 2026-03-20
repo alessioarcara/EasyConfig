@@ -1,6 +1,6 @@
 import keyword
 import re
-from enum import StrEnum
+from enum import Enum
 from types import GenericAlias, UnionType
 from typing import Any, ForwardRef, TypeAlias, get_args
 
@@ -79,7 +79,12 @@ class SchemaParser:
 
         result: Any
         if isinstance(type_def, list):
-            result = cls._build_enum(name, type_def)
+            if all(isinstance(v, int) for v in type_def):
+                result = cls._build_enum(name, type_def, int)
+            elif all(isinstance(v, float) for v in type_def):
+                result = cls._build_enum(name, type_def, float)
+            else:
+                result = cls._build_enum(name, type_def, str)
         elif isinstance(type_def, dict):
             result = cls._build_model(name, type_def, aliases, base_class=base_class)
         else:
@@ -172,22 +177,16 @@ class SchemaParser:
         raise SchemaError(f"Unknown or unsupported type '{type_str}' at '{path}'.")
 
     @staticmethod
-    def _build_enum(name: str, values: list[str]) -> type[StrEnum]:
+    def _build_enum(name: str, values: list[Any], value_type: type = str) -> type[Enum]:
         if not values:
+            raise SchemaError(f"Enum '{name}' cannot be empty.")
+        if not all(isinstance(v, value_type) for v in values):
             raise SchemaError(
-                f"Enum '{name}' cannot be empty. Provide at least one string value."
-            )
-        if not all(isinstance(v, str) for v in values):
-            raise SchemaError(
-                f"Enum '{name}' contains invalid values. All elements must be strings."
+                f"Enum '{name}' contains invalid values for type {value_type.__name__}."
             )
 
-        def normalize(v: str) -> str:
-            return re.sub(r"\W|^(?=\d)", "_", v)
-
-        enum_members = [(normalize(v), v) for v in values]
-
-        return StrEnum(name, enum_members)  # type: ignore
+        enum_members = {f"V{i}": v for i, v in enumerate(values)}
+        return Enum(name, enum_members)  # type: ignore
 
     @classmethod
     def _validate_name(cls, name: str, context: str, path: str = "") -> None:

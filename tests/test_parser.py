@@ -141,17 +141,26 @@ def test_should_handle_enum_types() -> None:
             - sgd
             - adam
             - rmsprop
+        LearningRateType:
+            - 0.001
+            - 0.01
+            - 0.1
     schema:
         optimizer: OptimizerType
+        learning_rate: LearningRateType
     """
 
     model = SchemaParser.parse(enum_config)
 
-    instance: Any = model.model_validate({"optimizer": "adam"})
-    assert instance.optimizer == "adam"
+    instance: Any = model.model_validate({"optimizer": "adam", "learning_rate": 0.01})
+    assert instance.optimizer.value == "adam"
+    assert instance.learning_rate.value == 0.01
 
     with pytest.raises(ValidationError):
-        model.model_validate({"optimizer": "invalid_optimizer"})
+        model.model_validate({"optimizer": "invalid_optimizer", "learning_rate": 0.01})
+
+    with pytest.raises(ValidationError):
+        model.model_validate({"optimizer": "sgd", "learning_rate": 0.05})
 
 
 def test_should_handle_inherited_models() -> None:
@@ -175,4 +184,4 @@ def test_should_handle_inherited_models() -> None:
         {"backbone": {"n_layers": 3, "aggr_type": "mean"}}
     )
     assert instance.backbone.n_layers == 3
-    assert instance.backbone.aggr_type == "mean"
+    assert instance.backbone.aggr_type.value == "mean"
