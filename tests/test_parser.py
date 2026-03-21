@@ -185,3 +185,65 @@ def test_should_handle_inherited_models() -> None:
     )
     assert instance.backbone.n_layers == 3
     assert instance.backbone.aggr_type.value == "mean"
+
+
+def test_should_handle_inheritance_with_forward_refs() -> None:
+    config = """
+    types:
+        A < B:
+            a: int
+        B < C:
+            b: int
+        C:
+            c: int
+    schema:
+        model: A
+    """
+
+    model = SchemaParser.parse(config)
+
+    instance: Any = model.model_validate(
+        {
+            "model": {
+                "a": 1,
+                "b": 2,
+                "c": 3,
+            }
+        }
+    )
+
+    assert instance.model.a == 1
+    assert instance.model.b == 2
+    assert instance.model.c == 3
+
+
+def test_should_raise_error_on_circular_inheritance_dependency() -> None:
+    config = """
+    types:
+        A < B:
+            a: int
+        B < A:
+            b: int
+    schema:
+        model: A
+    """
+
+    with pytest.raises(SchemaError) as exc_info:
+        SchemaParser.parse(config)
+
+    assert "Circular dependency" in str(exc_info.value)
+
+
+def test_should_raise_error_on_circular_alias_dependency() -> None:
+    config = """
+    types:
+        A: B
+        B: A
+    schema:
+        value: A
+    """
+
+    with pytest.raises(SchemaError) as exc_info:
+        SchemaParser.parse(config)
+
+    assert "Circular" in str(exc_info.value) or "unresolved" in str(exc_info.value)
