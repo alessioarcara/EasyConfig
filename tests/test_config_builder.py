@@ -1,19 +1,19 @@
 from pathlib import Path
 from typing import Any
 
-from easyconfig.config_builder import ConfigBuilder
-
 import pytest
 
+from easyconfig.config_builder import ConfigBuilder
 
-def test_should_instantiate_class_from_file(fake_dataset_file: Path) -> None:
+
+def test_should_instantiate_from_package(fake_dataset_package: str) -> None:
     schema = f"""
-    dataset: {fake_dataset_file}:Dataset
+    dataset: {fake_dataset_package}:Dataset
     """
 
     config = f"""
     dataset:
-        _target_type_: {fake_dataset_file}:FakeDataset
+        _target_type_: {fake_dataset_package}:FakeDataset
         _init_args_:
              num_classes: 100
     """
@@ -21,12 +21,12 @@ def test_should_instantiate_class_from_file(fake_dataset_file: Path) -> None:
     builder = ConfigBuilder(schema)
     built_config: Any = builder.build(config)
 
-    assert built_config["dataset"].__class__.__name__ == "FakeDataset"
-    assert built_config["dataset"].num_classes == 100
+    assert built_config.dataset.__class__.__name__ == "FakeDataset"
+    assert built_config.dataset.num_classes == 100
 
 
 @pytest.mark.parametrize("path_kind", ["absolute", "relative"])
-def test_happy_path_file(
+def test_should_instantiate_from_file(
     path_kind: str,
     fake_dataset_file: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -42,11 +42,43 @@ def test_happy_path_file(
         _target_type_: {target}
         _init_args_:
             num_classes: 100
+    training:
+        batch_size: 32
     """
 
-    config_builder = ConfigBuilder("")
-    built_config = config_builder.build(config)
+    builder = ConfigBuilder("")
+    built_config: Any = builder.build(config)
 
     dataset = built_config["dataset"]
     assert dataset.__class__.__name__ == "FakeDataset"
     assert dataset.num_classes == 100
+    assert built_config["training"]["batch_size"] == 32
+
+
+def test_should_instantiate_multiple_classes(fake_dataset_package: str) -> None:
+    schema = f"""
+    types:
+        Dataset: {fake_dataset_package}:Dataset
+    schema:
+        datasets: list[Dataset]
+    """
+
+    config = f"""
+    datasets:
+        - _target_type_: {fake_dataset_package}:FakeDataset
+          _init_args_:
+              num_classes: 100
+        - _target_type_: {fake_dataset_package}:FakeDataset
+          _init_args_:
+              num_classes: 50
+    """
+
+    builder = ConfigBuilder(schema)
+    built_config: Any = builder.build(config)
+
+    datasets = built_config.datasets
+    assert isinstance(datasets, list)
+    assert datasets[0].__class__.__name__ == "FakeDataset"
+    assert datasets[0].num_classes == 100
+    assert datasets[1].__class__.__name__ == "FakeDataset"
+    assert datasets[1].num_classes == 50

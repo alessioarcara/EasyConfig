@@ -89,9 +89,7 @@ class SchemaParser:
         if "<" in name:
             name, parent_name = map(str.strip, name.split("<", 1))
             if parent_name not in self.type_aliases:
-                raise SchemaError(
-                    f"Base type '{parent_name}' not defined for '{name}' at '{raw_name}'."
-                )
+                raise SchemaError(f"Base type '{parent_name}' not defined for '{name}' at '{raw_name}'.")
             base_class = self.type_aliases[parent_name]
 
         self._validate_name(name, "custom type", raw_name)
@@ -102,13 +100,9 @@ class SchemaParser:
                     f"Enum '{name}' at '{raw_name}' cannot be empty. "
                     "Provide at least one value, e.g., ['RED', 'GREEN']."
                 )
-            self.type_aliases[name] = Enum(
-                name, {f"V{i}": v for i, v in enumerate(type_def)}
-            )
+            self.type_aliases[name] = Enum(name, {f"V{i}": v for i, v in enumerate(type_def)})
         elif isinstance(type_def, dict):
-            self.type_aliases[name] = self._build_model(
-                name, type_def, base_class=base_class, path=raw_name
-            )
+            self.type_aliases[name] = self._build_model(name, type_def, base_class=base_class, path=raw_name)
         else:
             self.type_aliases[name] = self._parse_type(str(type_def), f"types.{name}")
 
@@ -140,9 +134,7 @@ class SchemaParser:
                         Field(default=parsed_default),
                     )
                 else:
-                    is_optional = isinstance(field_type, UnionType) and type(
-                        None
-                    ) in get_args(field_type)
+                    is_optional = isinstance(field_type, UnionType) and type(None) in get_args(field_type)
                     model_fields[field_name] = (
                         field_type,
                         Field(default=None if is_optional else ...),
@@ -188,9 +180,7 @@ class SchemaParser:
         try:
             return self.module_loader.load_class(type_str)
         except Exception as e:
-            raise SchemaError(
-                f"Failed to load external type '{type_str}' at '{path}'. Error: {e}. "
-            ) from e
+            raise SchemaError(f"Failed to load external type '{type_str}' at '{path}'. Error: {e}. ") from e
 
     def _validate_name(self, name: str, context: str, path: str = "") -> None:
         location = f" at '{path}'" if path else ""

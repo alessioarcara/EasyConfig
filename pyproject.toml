@@ -20,6 +20,7 @@ dev = [
     "mypy>=1.19.1",
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
+    "pytest-cov>=7.1.0",
     "ruff>=0.15.5",
     "types-pyyaml>=6.0.12.20250915",
 ]
@@ -33,3 +34,7 @@ packages = ["src/easyconfig"]
 [tool.mypy]
 strict = true
 install_types = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"

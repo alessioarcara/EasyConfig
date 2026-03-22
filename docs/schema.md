@@ -2,14 +2,40 @@
 
 ## Why?
 
-Even though it’s not strictly required, defining your configuration using a YAML
-schema allows it to be automatically validated using **Pydantic** under the hood.
+Using a YAML schema lets your configuration be automatically validated with
+Pydantic.
 
-This ensures that everything passed to your Python classes matches the expected
-types, helping you avoid subtle bugs.
+This ensures values always match expected types (e.g. no strings where integers
+are required), reducing bugs and improving reliability.
 
-This is useful to be sure 100% that the things passed to your python classes be exactly what you expect
-and not waste time on some regression error cause you pass a string to something else.
+It also acts as documentation, making it easy to understand what values exist
+and how they are used.
 
-Moreover it serves as a sort of documentation of your config that is your single source of truth of instantiated objects and cabled values,
-to help people that work together to understand easily where all the values are and what are their scope.
+## YAML Structure
+
+A schema can contain two top-level keys:
+
+```yaml
+types:
+  # type definitions
+
+schema:
+  # main configuration
+```
+
+If you define `types`, you must also define `schema`.
+
+If `types` is not present, the entire YAML is treated as the root schema.
+
+## Supported types
+
+* **Primitives**: int, float, str, bool
+* **Optional**: type?
+* **Default values**: type = value
+* **Lists**: list[T]
+* **Unions**: A | B
+* **Nested objects**: via indentation
+* **Custom types**: defined in types
+* **Enums**: list of values
+* **Inheritance**: Child < Parent
+* **External types**: e.g. pathlib.Path

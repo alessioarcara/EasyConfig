@@ -23,9 +23,7 @@ class ModuleLoader:
         try:
             module_path, class_name = target.split(":", 1)
         except ValueError as e:
-            raise ValueError(
-                f"Invalid target '{target}', expected 'module:ClassName'"
-            ) from e
+            raise ValueError(f"Invalid target '{target}', expected 'module:ClassName'") from e
 
         if self._is_file_path(module_path):
             module = self._load_from_file(Path(module_path))
@@ -38,9 +36,7 @@ class ModuleLoader:
             raise AttributeError(f"Class '{class_name}' not found in '{target}'") from e
 
         if not isinstance(obj, type):
-            raise TypeError(
-                f"Target '{target}' is not a class (got {type(obj).__name__})"
-            )
+            raise TypeError(f"Target '{target}' is not a class (got {type(obj).__name__})")
 
         return obj
 
@@ -95,8 +91,6 @@ class ModuleLoader:
             raise AttributeError(f"Class '{class_name}' not found in '{target}'") from e
 
         if not isinstance(obj, type):
-            raise TypeError(
-                f"Target '{target}' is not a class (got {type(obj).__name__})"
-            )
+            raise TypeError(f"Target '{target}' is not a class (got {type(obj).__name__})")
 
         return obj

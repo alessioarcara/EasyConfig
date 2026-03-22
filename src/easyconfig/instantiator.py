@@ -29,18 +29,28 @@ class Instantiator:
     def __init__(self) -> None:
         self._loader = ModuleLoader()
 
-    def __call__(self, config: str) -> dict[str, Any]:
-        data = yaml.safe_load(config)
-        build_config: dict[str, Any] = {}
+    def __call__(self, config: str | dict[str, Any]) -> Any:
+        if isinstance(config, str):
+            data = yaml.safe_load(config)
+        else:
+            data = config
 
-        for field, value in data.items():
-            if isinstance(value, dict) and "_target_type_" in value:
-                target = value["_target_type_"]
-                args = value.get("_init_args_", {})
+        return self._instantiate(data)
 
-                cls: Any = self._loader.load_class(target)
-                build_config[field] = cls(**args)
-            else:
-                build_config[field] = value
+    def _instantiate(self, obj: Any) -> Any:
+        """
+        - dict with "_target_type_" -> instantiate class
+        - dict without "_target_type_" -> recurse on values
+        - list -> recurse on elements
+        - primitives -> return as-is
+        """
+        if isinstance(obj, dict):
+            if "_target_type_" in obj:
+                cls: Any = self._loader.load_class(obj["_target_type_"])
+                return cls(**obj.get("_init_args_", {}))
+            return {k: self._instantiate(v) for k, v in obj.items()}
 
-        return build_config
+        if isinstance(obj, list):
+            return [self._instantiate(v) for v in obj]
+
+        return obj

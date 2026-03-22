@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -25,25 +26,18 @@ class FakeDataset(Dataset):
     return file_path
 
 
-@pytest.fixture()
-def fake_dataset_package(
-    tmp_path_factory: pytest.TempPathFactory,
-    monkeypatch: pytest.MonkeyPatch,
-) -> str:
-    root = tmp_path_factory.mktemp("package_target")
-    package_dir = root / "fakepkg"
-    package_dir.mkdir()
+@pytest.fixture
+def fake_dataset_package(tmp_path_factory: pytest.TempPathFactory) -> str:
+    pkg_root = tmp_path_factory.mktemp("fakepkg")
+    pkg_dir = pkg_root / "fakepkg"
+    pkg_dir.mkdir()
 
-    (package_dir / "__init__.py").write_text(
-        """
-from .dataset import FakeDataset
-""".lstrip(),
-        encoding="utf-8",
-    )
+    (pkg_dir / "__init__.py").write_text("", encoding="utf-8")
 
-    (package_dir / "dataset.py").write_text(
+    (pkg_dir / "dataset.py").write_text(
         """
 from abc import ABC
+
 class Dataset(ABC): ...
 
 class FakeDataset(Dataset):
@@ -53,5 +47,6 @@ class FakeDataset(Dataset):
         encoding="utf-8",
     )
 
-    monkeypatch.syspath_prepend(str(root))
-    return "fakepkg:FakeDataset"
+    sys.path.insert(0, str(pkg_root))
+
+    return "fakepkg.dataset"

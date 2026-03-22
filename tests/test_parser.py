@@ -73,9 +73,7 @@ def test_should_raise_schema_error_for_unsupported_type(parser: SchemaParser) ->
         ),
     ],
 )
-def test_should_raise_validation_error(
-    input_data: dict[str, Any], parser: SchemaParser
-) -> None:
+def test_should_raise_validation_error(input_data: dict[str, Any], parser: SchemaParser) -> None:
     model = parser.parse(config)
 
     with pytest.raises(ValidationError):
@@ -188,9 +186,7 @@ def test_should_handle_inherited_models(parser: SchemaParser) -> None:
 
     model = parser.parse(inherited_config)
 
-    instance: Any = model.model_validate(
-        {"backbone": {"n_layers": 3, "aggr_type": "mean"}}
-    )
+    instance: Any = model.model_validate({"backbone": {"n_layers": 3, "aggr_type": "mean"}})
     assert instance.backbone.n_layers == 3
     assert instance.backbone.aggr_type.value == "mean"
 
