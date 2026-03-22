@@ -1,4 +1,3 @@
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -13,24 +12,22 @@ def _write_temp_yaml(tmpdir: Path, content: str, name: str = "config.yaml") -> P
     return path
 
 
-def test_should_instantiate_from_package(fake_dataset_package: str) -> None:
-    schema = f"dataset: {fake_dataset_package}:Dataset"
+def test_should_instantiate_from_package(fake_dataset_package: str, tmp_path: Path) -> None:
+    schema = f"dataset: {fake_dataset_package}.dataset:Dataset"
     config = f"""
 dataset:
-    _target_type_: {fake_dataset_package}:FakeDataset
+    _target_type_: {fake_dataset_package}.dataset:FakeDataset
     _init_args_:
         num_classes: 100
 """
 
-    with tempfile.TemporaryDirectory() as tmpdir_str:
-        tmpdir = Path(tmpdir_str)
-        config_file = _write_temp_yaml(tmpdir, config, "config.yaml")
-        schema_file = _write_temp_yaml(tmpdir, schema, "schema.yaml")
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+    schema_file = _write_temp_yaml(tmp_path, schema, "schema.yaml")
 
-        built_config: Any = ConfigBuilder.from_files(config_paths=config_file, schema_path=schema_file)
+    built_config: Any = ConfigBuilder.from_files(config_paths=config_file, schema_path=schema_file)
 
-        assert built_config.dataset.__class__.__name__ == "FakeDataset"
-        assert built_config.dataset.num_classes == 100
+    assert built_config.dataset.__class__.__name__ == "FakeDataset"
+    assert built_config.dataset.num_classes == 100
 
 
 @pytest.mark.parametrize("path_kind", ["absolute", "relative"])
@@ -38,6 +35,7 @@ def test_should_instantiate_from_file(
     path_kind: str,
     fake_dataset_file: Path,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     if path_kind == "absolute":
         target = f"{fake_dataset_file}:FakeDataset"
@@ -54,54 +52,50 @@ training:
     batch_size: 32
 """
 
-    with tempfile.TemporaryDirectory() as tmpdir_str:
-        tmpdir = Path(tmpdir_str)
-        config_file = _write_temp_yaml(tmpdir, config, "config.yaml")
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
 
-        built_config: Any = ConfigBuilder.from_files(config_paths=config_file)
+    built_config: Any = ConfigBuilder.from_files(config_paths=config_file)
 
-        dataset = built_config["dataset"]
-        assert dataset.__class__.__name__ == "FakeDataset"
-        assert dataset.num_classes == 100
-        assert built_config["training"]["batch_size"] == 32
+    dataset = built_config["dataset"]
+    assert dataset.__class__.__name__ == "FakeDataset"
+    assert dataset.num_classes == 100
+    assert built_config["training"]["batch_size"] == 32
 
 
-def test_should_instantiate_multiple_classes(fake_dataset_package: str) -> None:
+def test_should_instantiate_multiple_classes(fake_dataset_package: str, tmp_path: Path) -> None:
     schema = f"""
 types:
-    Dataset: {fake_dataset_package}:Dataset
+    Dataset: {fake_dataset_package}.dataset:Dataset
 schema:
     datasets: list[Dataset]
 """
     config = f"""
 datasets:
-    - _target_type_: {fake_dataset_package}:FakeDataset
+    - _target_type_: {fake_dataset_package}.dataset:FakeDataset
       _init_args_:
           num_classes: 100
-    - _target_type_: {fake_dataset_package}:FakeDataset
+    - _target_type_: {fake_dataset_package}.dataset:FakeDataset
       _init_args_:
           num_classes: 50
 """
 
-    with tempfile.TemporaryDirectory() as tmpdir_str:
-        tmpdir = Path(tmpdir_str)
-        config_file = _write_temp_yaml(tmpdir, config, "config.yaml")
-        schema_file = _write_temp_yaml(tmpdir, schema, "schema.yaml")
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+    schema_file = _write_temp_yaml(tmp_path, schema, "schema.yaml")
 
-        built_config: Any = ConfigBuilder.from_files(config_paths=config_file, schema_path=schema_file)
+    built_config: Any = ConfigBuilder.from_files(config_paths=config_file, schema_path=schema_file)
 
-        datasets = built_config.datasets
-        assert isinstance(datasets, list)
-        assert datasets[0].__class__.__name__ == "FakeDataset"
-        assert datasets[0].num_classes == 100
-        assert datasets[1].__class__.__name__ == "FakeDataset"
-        assert datasets[1].num_classes == 50
+    datasets = built_config.datasets
+    assert isinstance(datasets, list)
+    assert datasets[0].__class__.__name__ == "FakeDataset"
+    assert datasets[0].num_classes == 100
+    assert datasets[1].__class__.__name__ == "FakeDataset"
+    assert datasets[1].num_classes == 50
 
 
-def test_deep_merge_of_multiple_configs(fake_dataset_package: str) -> None:
+def test_deep_merge_of_multiple_configs(fake_dataset_package: str, tmp_path: Path) -> None:
     config1 = f"""
 dataset:
-    _target_type_: {fake_dataset_package}:FakeDataset
+    _target_type_: {fake_dataset_package}.dataset:FakeDataset
     _init_args_:
         num_classes: 100
 training:
@@ -114,31 +108,24 @@ optimizer:
     type: Adam
 """
 
-    with tempfile.TemporaryDirectory() as tmpdir_str:
-        tmpdir = Path(tmpdir_str)
-        file1 = _write_temp_yaml(tmpdir, config1, "config1.yaml")
-        file2 = _write_temp_yaml(tmpdir, config2, "config2.yaml")
+    file1 = _write_temp_yaml(tmp_path, config1, "config1.yaml")
+    file2 = _write_temp_yaml(tmp_path, config2, "config2.yaml")
 
-        built_config: Any = ConfigBuilder.from_files(config_paths=[file1, file2])
+    built_config: Any = ConfigBuilder.from_files(config_paths=[file1, file2])
 
-        # Dataset is still correct
-        dataset = built_config["dataset"]
-        assert dataset.__class__.__name__ == "FakeDataset"
-        assert dataset.num_classes == 100
-
-        # Training values are merged
-        assert built_config["training"]["batch_size"] == 32
-        assert built_config["training"]["epochs"] == 10
-
-        # Optimizer is present
-        assert built_config["optimizer"]["type"] == "Adam"
+    dataset = built_config["dataset"]
+    assert dataset.__class__.__name__ == "FakeDataset"
+    assert dataset.num_classes == 100
+    assert built_config["training"]["batch_size"] == 32
+    assert built_config["training"]["epochs"] == 10
+    assert built_config["optimizer"]["type"] == "Adam"
 
 
-def test_overrides_applied_correctly(fake_dataset_package: str) -> None:
+def test_overrides_applied_correctly(fake_dataset_package: str, tmp_path: Path) -> None:
     """Test that overrides dictionary properly overwrites configuration values."""
     config = f"""
 dataset:
-    _target_type_: {fake_dataset_package}:FakeDataset
+    _target_type_: {fake_dataset_package}.dataset:FakeDataset
     _init_args_:
         num_classes: 100
 training:
@@ -148,18 +135,90 @@ training:
 
     overrides = {"dataset": {"_init_args_": {"num_classes": 50}}, "training": {"batch_size": 64}}
 
-    with tempfile.TemporaryDirectory() as tmpdir_str:
-        tmpdir = Path(tmpdir_str)
-        config_file = _write_temp_yaml(tmpdir, config, "config.yaml")
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
 
-        built_config: Any = ConfigBuilder.from_files(config_paths=config_file, overrides=overrides)
+    built_config: Any = ConfigBuilder.from_files(config_paths=config_file, overrides=overrides)
 
-        # Dataset overridden
-        dataset = built_config["dataset"]
-        assert dataset.__class__.__name__ == "FakeDataset"
-        assert dataset.num_classes == 50
+    dataset = built_config["dataset"]
+    assert dataset.__class__.__name__ == "FakeDataset"
+    assert dataset.num_classes == 50
+    assert built_config["training"]["batch_size"] == 64
+    assert built_config["training"]["epochs"] == 10
 
-        # Training overridden
-        assert built_config["training"]["batch_size"] == 64
-        # Non-overridden values remain
-        assert built_config["training"]["epochs"] == 10
+
+def test_should_instantiate_with_placeholder(fake_dataset_package: str, tmp_path: Path) -> None:
+    config = f"""
+num_classes: 10
+dataset:
+    _target_type_: {fake_dataset_package}.dataset:FakeDataset
+    _init_args_:
+        num_classes: ${{num_classes}}
+"""
+
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+
+    built_config: Any = ConfigBuilder.from_files(config_paths=config_file)
+
+    assert built_config["num_classes"] == 10
+    dataset = built_config["dataset"]
+    assert dataset.__class__.__name__ == "FakeDataset"
+    assert dataset.num_classes == 10
+
+
+def test_placeholder_attribute_access(fake_dataset_package: str, tmp_path: Path) -> None:
+    config = f"""
+dataset:
+    _target_type_: {fake_dataset_package}.dataset:FakeDataset
+    _init_args_:
+        num_classes: 5
+
+model:
+    _target_type_: {fake_dataset_package}.model:FakeModel
+    _init_args_:
+        dout: ${{dataset.num_classes}}
+"""
+
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+
+    built_config: Any = ConfigBuilder.from_files(config_paths=config_file)
+
+    model = built_config["model"]
+    dataset = built_config["dataset"]
+
+    assert model.dout == 5
+    assert dataset.num_classes == 5
+
+
+def test_instantiate_model_and_optimizer_with_schema(tmp_path: Path) -> None:
+    module_content = """
+class Model:
+    def parameters(self):
+        return [1, 2, 3]
+
+class Optimizer:
+    def __init__(self, params: list[int]):
+        self.params = params
+"""
+    module_file = _write_temp_yaml(tmp_path, module_content, "mock.py")
+
+    config = f"""
+model:
+    _target_type_: {module_file}:Model
+optimizer:
+    _target_type_: {module_file}:Optimizer
+    _init_args_:
+        params: ${{model.parameters()}}
+"""
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+
+    schema = f"""
+model: {module_file}:Model
+optimizer: {module_file}:Optimizer
+"""
+    schema_file = _write_temp_yaml(tmp_path, schema, "schema.yaml")
+
+    cfg: Any = ConfigBuilder.from_files(config_paths=config_file, schema_path=schema_file)
+
+    assert cfg.model.__class__.__name__ == "Model"
+    assert cfg.optimizer.__class__.__name__ == "Optimizer"
+    assert cfg.optimizer.params == [1, 2, 3]

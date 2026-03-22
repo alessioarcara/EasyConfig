@@ -3,7 +3,7 @@ requires = ["hatchling>=1.29.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "easyconfig"
+name = "ezconfy"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -12,9 +12,11 @@ authors = [
     { name = "Alessio Arcara", email = "alessio.arcara@studio.unibo.it" },
 ]
 dependencies = [
+    "hatch>=1.16.5",
     "loguru>=0.7.3",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
+    "twine>=6.2.0",
 ]
 
 [project.optional-dependencies]
@@ -30,7 +32,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/easyconfig"]
+packages = ["src/ezconfy"]
 
 [tool.hatch.build.targets.wheel.sources]
 "src" = ""

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Optional, Union, cast
+from typing import Any, Optional, Union
 
 import yaml
 from loguru import logger
@@ -79,7 +79,7 @@ class ConfigBuilder:
 
         # If no schema, return raw instantiated dict
         if builder.schema_model is None:
-            return cast(dict[str, Any], instantiated)
+            return instantiated
 
         # Validate with Pydantic schema
         try:

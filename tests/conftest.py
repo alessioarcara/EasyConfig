@@ -47,6 +47,19 @@ class FakeDataset(Dataset):
         encoding="utf-8",
     )
 
+    (pkg_dir / "model.py").write_text(
+        """
+from abc import ABC
+
+class Model(ABC): ...
+
+class FakeModel(Model):
+    def __init__(self, dout: int) -> None:
+        self.dout = dout
+""".lstrip(),
+        encoding="utf-8",
+    )
+
     sys.path.insert(0, str(pkg_root))
 
-    return "fakepkg.dataset"
+    return "fakepkg"
