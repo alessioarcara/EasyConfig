@@ -5,8 +5,8 @@ import yaml
 from loguru import logger
 from pydantic import BaseModel, ValidationError
 
-from easyconfig.instantiator import Instantiator
-from easyconfig.parser import SchemaParser
+from ezconfy.instantiator import Instantiator
+from ezconfy.parser import SchemaParser
 
 pathLike = Union[str, Path]
 
