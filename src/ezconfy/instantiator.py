@@ -16,6 +16,22 @@ class Instantiator:
         return self._instantiate_topologically(config, dep_graph)
 
     def _build_dependency_graph(self, config: dict[str, Any]) -> dict[str, set[str]]:
+        """
+        Example:
+
+        config = {
+            "A": "value",
+            "B": "{A}",
+            "C": "{B}.{A}"
+        }
+
+        the resulting dependency graph would be:
+        {
+            "A": set(),
+            "B": {"A"},
+            "C": {"A", "B"}
+        }
+        """
         graph = {}
         nodes = set(config.keys())
         for name, node in config.items():
@@ -41,23 +57,50 @@ class Instantiator:
 
     def _resolve_path(self, path: str, resolved_config: dict[str, Any]) -> Any:
         """
-        Navigates through a resolved object using dot-notation.
+        Example:
+
+            config = {
+                ...
+                "A": Dataset,
+                "B": {
+                    "value": "{A.num_classes}"
+                }
+            }
+
+            Resolving "{A.num_classes}":
+
+            Path:
+                "A.num_classes" -> ["A", "num_classes"]
+
+            Steps:
+                current = resolved_config["A"]      -> Dataset
+                current = getattr(current, "num_classes") -> 10
+
+            Result:
+                10
         """
+
+        def _get_attr(obj: Any, name: str) -> Any:
+            if isinstance(obj, dict):
+                if name in obj:
+                    return obj[name]
+                raise AttributeError(f"Key '{name}' not found in dict {obj}")
+            if hasattr(obj, name):
+                return getattr(obj, name)
+            raise AttributeError(f"Cannot resolve '{name}' on {obj}")
+
         parts = path.split(".")
         current = resolved_config[parts[0]]
 
         for part in parts[1:]:
             is_method = part.endswith("()")
-            attr = part[:-2] if is_method else part
+            name = part[:-2] if is_method else part
 
-            if isinstance(current, dict) and attr in current:
-                current = current[attr]
-            elif hasattr(current, attr):
-                current = getattr(current, attr)
-            else:
-                raise AttributeError(f"Cannot resolve '{attr}' on {current}")
+            current = _get_attr(current, name)
 
-            if is_method and callable(current):
+            if is_method:
+                if not callable(current):
+                    raise TypeError(f"'{name}' is not callable on {current}")
                 current = current()
 
         return current
