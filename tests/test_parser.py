@@ -53,6 +53,34 @@ def test_should_raise_schema_error_for_unsupported_type(parser: SchemaParser) ->
     assert "training.early_stopping.patience" in str(exc_info.value)
 
 
+def test_should_raise_schema_error_for_non_mapping_root(parser: SchemaParser) -> None:
+    invalid_config = """
+    - 1
+    - 2
+    """
+
+    with pytest.raises(SchemaError) as exc_info:
+        parser.parse(invalid_config)
+
+    assert "top level" in str(exc_info.value).lower()
+    assert "mapping" in str(exc_info.value).lower()
+
+
+def test_should_raise_schema_error_for_non_mapping_types_section(parser: SchemaParser) -> None:
+    invalid_config = """
+    types:
+      - A
+    schema:
+      value: int
+    """
+
+    with pytest.raises(SchemaError) as exc_info:
+        parser.parse(invalid_config)
+
+    assert "types" in str(exc_info.value).lower()
+    assert "mapping" in str(exc_info.value).lower()
+
+
 @pytest.mark.parametrize(
     "input_data",
     [

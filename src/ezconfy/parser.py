@@ -34,6 +34,9 @@ class SchemaParser:
 
         data = yaml.safe_load(config_str) or {}
 
+        if not isinstance(data, dict):
+            raise SchemaError("Schema document must be a YAML mapping at the top level.")
+
         if "types" in data and "schema" not in data:
             raise SchemaError(
                 "Missing root 'schema' node at top level when 'types' is defined. "
@@ -42,6 +45,9 @@ class SchemaParser:
 
         custom_types_def = data.pop("types", {})
         root_definition = data.pop("schema", data)
+
+        if not isinstance(custom_types_def, dict):
+            raise SchemaError("The 'types' section must be a YAML mapping.")
 
         if not isinstance(root_definition, dict):
             raise SchemaError("Schema definition at top level must be a dictionary.")
