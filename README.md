@@ -1,4 +1,6 @@
-# ezconfy
+<p align="center">
+  <img src="docs/logo.svg" alt="ezconfy logo" width="280" />
+</p>
 
 A lightweight Python library for YAML-based configuration with automatic Pydantic validation and dynamic object instantiation.
 
