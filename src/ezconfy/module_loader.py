@@ -78,19 +78,3 @@ class ModuleLoader:
 
         self._file_cache[file_path] = module
         return module
-
-    def _get_class(
-        self,
-        module: ModuleType,
-        class_name: str,
-        target: str,
-    ) -> type[T]:
-        try:
-            obj = getattr(module, class_name)
-        except AttributeError as e:
-            raise AttributeError(f"Class '{class_name}' not found in '{target}'") from e
-
-        if not isinstance(obj, type):
-            raise TypeError(f"Target '{target}' is not a class (got {type(obj).__name__})")
-
-        return obj
