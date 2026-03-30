@@ -1,20 +1,20 @@
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
-import yaml
 from loguru import logger
 from pydantic import BaseModel, ValidationError
 
 from ezconfy.instantiator import Instantiator
-from ezconfy.parser import SchemaParser
+from ezconfy.io import read_yaml
+from ezconfy.schema_parser import SchemaParser
 
-pathLike = Union[str, Path]
+pathLike = str | Path
 
 
 class ConfigBuilder:
-    def __init__(self, schema_yaml: Optional[str] = None) -> None:
+    def __init__(self, schema_yaml: str | None = None) -> None:
         self.instantiator = Instantiator()
-        self.schema_model: Optional[type[BaseModel]] = None
+        self.schema_model: type[BaseModel] | None = None
         if schema_yaml:
             parser = SchemaParser()
             self.schema_model = parser.parse(schema_yaml)
@@ -30,22 +30,12 @@ class ConfigBuilder:
                 merged[k] = v
         return merged
 
-    @staticmethod
-    def _read_yaml(path: Path) -> dict[str, Any]:
-        """Load a YAML file and return it as a dict."""
-        try:
-            with path.open("r", encoding="utf-8") as f:
-                return yaml.safe_load(f) or {}
-        except Exception as e:
-            logger.error(f"❌ Failed to read YAML file {path}: {e}")
-            raise
-
     @classmethod
     def from_files(
         cls,
-        config_paths: Union[pathLike, list[pathLike]],
-        overrides: Optional[dict[str, Any]] = None,
-        schema_path: Optional[pathLike] = None,
+        config_paths: pathLike | list[pathLike],
+        overrides: dict[str, Any] | None = None,
+        schema_path: pathLike | None = None,
     ) -> BaseModel | dict[str, Any]:
         """Build configuration from one or more YAML files with optional overrides and schema."""
         # Normalize paths
@@ -57,15 +47,15 @@ class ConfigBuilder:
         merged_config: dict[str, Any] = {}
         logger.info(f"📄 Building config from {len(paths)} file(s):")
         for path in paths:
-            logger.info(f"    -> Loading: {path}")
-            merged_config = cls._deep_merge(merged_config, cls._read_yaml(path))
+            logger.info(f"\t-> Loading: {path}")
+            merged_config = cls._deep_merge(merged_config, read_yaml(path))
 
         # Apply overrides
         if overrides:
             merged_config = cls._deep_merge(merged_config, overrides)
 
         # Load schema if provided
-        schema_yaml: Optional[str] = None
+        schema_yaml: str | None = None
         if schema_path:
             try:
                 schema_yaml = Path(schema_path).read_text(encoding="utf-8")
@@ -83,7 +73,7 @@ class ConfigBuilder:
 
         # Validate with Pydantic schema
         try:
-            return builder.schema_model(**instantiated)
+            return builder.schema_model.model_validate(instantiated)
         except ValidationError as e:
             logger.error(f"❌ Configuration validation failed:\n{e}")
             raise ValueError(f"Configuration validation failed: {e}") from e

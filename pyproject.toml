@@ -7,9 +7,10 @@ name = "ezconfy"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 authors = [
     { name = "Alessio Arcara", email = "alessio.arcara@studio.unibo.it" },
+    { name = "Francesco Baiocchi", email = "francesco.baiocchi2@studio.unibo.it" },
 ]
 dependencies = [
     "hatch>=1.16.5",
@@ -17,6 +18,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
     "twine>=6.2.0",
+    "typer>=0.24.1",
 ]
 
 [project.optional-dependencies]
@@ -43,4 +45,7 @@ install_types = true
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py311"
+
+[project.scripts]
+ezconfy = "ezconfy.schema_watcher:app"
