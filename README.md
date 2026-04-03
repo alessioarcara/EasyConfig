@@ -2,7 +2,7 @@
   <img src="docs/logo.svg" alt="ezconfy logo" width="280" />
 </p>
 
-A lightweight Python library for YAML-based configuration with automatic Pydantic validation and dynamic object instantiation.
+EasyConfig is designed for ML/data science projects that want **typed, validated configs with automatic object wiring** - without the complexity of a full framework like Hydra.
 
 ## Installation
 
