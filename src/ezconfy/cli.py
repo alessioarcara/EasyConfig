@@ -1,7 +1,8 @@
-from pathlib import Path
+from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from types import UnionType
-from typing import Any, Union, get_args, get_origin
+from typing import Any, TypeGuard, Union, get_args, get_origin
 
 import typer
 from loguru import logger
@@ -18,117 +19,105 @@ def _is_union(t: object) -> bool:
     return origin is Union or isinstance(t, UnionType)
 
 
+def _is_pydantic_model(annotation: Any) -> TypeGuard[type[BaseModel]]:
+    return isinstance(annotation, type) and issubclass(annotation, BaseModel) and annotation is not BaseModel
+
+
+def _is_enum(annotation: Any) -> TypeGuard[type[Enum]]:
+    return isinstance(annotation, type) and issubclass(annotation, Enum)
+
+
+def _is_builtin(annotation: Any) -> bool:
+    return getattr(annotation, "__module__", None) == "builtins"
+
+
 def resolve_type(annotation: type[Any]) -> tuple[str, set[tuple[str, str]]]:
+    type_str: str
+    imports: set[tuple[str, str]] = set()
     origin = get_origin(annotation)
+
     if origin is not None:
         # Generic type: List[X], Dict[K, V], Optional[X], Union[A, B], etc.
         args = get_args(annotation)
-        all_imports: set[tuple[str, str]] = set()
-
         if _is_union(annotation):
-            # Emit as `A | B` (PEP 604 style), keeping `None` at the end
             non_none_args = [a for a in args if a is not type(None)]
             has_none = type(None) in args
             resolved = []
             for arg in non_none_args:
                 arg_str, arg_imports = resolve_type(arg)
                 resolved.append(arg_str)
-                all_imports.update(arg_imports)
-            result = " | ".join(resolved)
+                imports.update(arg_imports)
+            type_str = " | ".join(resolved)
             if has_none:
-                result += " | None"
-            return (result, all_imports)
+                type_str += " | None"
+        else:
+            # Non-union generic: recurse into each type argument
+            resolved = []
+            for arg in args:
+                arg_str, arg_imports = resolve_type(arg)
+                resolved.append(arg_str)
+                imports.update(arg_imports)
+            origin_name = getattr(origin, "__name__", str(origin))
+            type_str = f"{origin_name}[{', '.join(resolved)}]"
 
-        # Non-union generic: recurse into each type argument
-        resolved = []
-        for arg in args:
-            arg_str, arg_imports = resolve_type(arg)
-            resolved.append(arg_str)
-            all_imports.update(arg_imports)
+    elif _is_pydantic_model(annotation) or _is_enum(annotation) or _is_builtin(annotation):
+        type_str = annotation.__name__
+    else:
+        type_str = annotation.__name__
+        imports.add((annotation.__module__, annotation.__name__))
 
-        origin_name = getattr(origin, "__name__", str(origin))
-        result = f"{origin_name}[{', '.join(resolved)}]"
-        return (result, all_imports)
-
-    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-        # Nested Pydantic model — defined in the same generated file, no import needed
-        return (annotation.__name__, set())
-
-    if isinstance(annotation, type) and issubclass(annotation, Enum):
-        # Enums are emitted directly into the generated file.
-        return (annotation.__name__, set())
-
-    if annotation.__module__ == "builtins":
-        # Built-in types (int, str, bool, …) need no import
-        return (annotation.__name__, set())
-
-    # Any other type lives in a third-party or user module and needs an explicit import
-    return (annotation.__name__, {(annotation.__module__, annotation.__name__)})
+    return type_str, imports
 
 
-def collect_nested_models(model: type[BaseModel]) -> list[type[BaseModel]]:
-    """
-    DFS post-order traversal to collect all nested BaseModel classes used in the given model.
-    Leaf models are collected first, then their parents, ensuring correct order for code generation.
-
-    From this schema:
-
-    A:
-        x: int
-        b:
-            y: str
-
-    We will collect [B, A]
-
-    """
-    result: list[type[BaseModel]] = []
+def _walk_schema(
+    annotation: Any,
+    visited: list[type[Any]] | None = None,
+) -> list[type[Any]]:
     seen: set[int] = set()
+    ordered_nodes = visited if visited is not None else []
 
-    def _visit_type(t: Any) -> None:
-        origin = get_origin(t)
-        # list[X], Optional[X], ... -> unwrap and recurse into args
+    def _visit(current: Any) -> None:
+        origin = get_origin(current)
         if origin is not None:
-            for arg in get_args(t):
-                _visit_type(arg)
-            return
-        if isinstance(t, type) and issubclass(t, BaseModel) and t is not BaseModel:
-            if id(t) not in seen:
-                seen.add(id(t))
-                for fi in t.model_fields.values():
-                    if fi.annotation is not None:
-                        _visit_type(fi.annotation)
-                result.append(t)
-
-    for fi in model.model_fields.values():
-        if fi.annotation is not None:
-            _visit_type(fi.annotation)
-
-    return result
-
-
-def collect_enums(model: type[BaseModel]) -> list[type[Enum]]:
-    result: list[type[Enum]] = []
-    seen: set[int] = set()
-
-    def _visit_type(t: Any) -> None:
-        origin = get_origin(t)
-        if origin is not None:
-            for arg in get_args(t):
-                _visit_type(arg)
+            for arg in get_args(current):
+                _visit(arg)
             return
 
-        if isinstance(t, type) and issubclass(t, BaseModel) and t is not BaseModel:
-            for fi in t.model_fields.values():
-                if fi.annotation is not None:
-                    _visit_type(fi.annotation)
+        if not isinstance(current, type):
             return
 
-        if isinstance(t, type) and issubclass(t, Enum) and id(t) not in seen:
-            seen.add(id(t))
-            result.append(t)
+        current_id = id(current)
+        if current_id in seen:
+            return
+        seen.add(current_id)
 
-    _visit_type(model)
-    return result
+        if _is_pydantic_model(current):
+            for field_info in current.model_fields.values():
+                if field_info.annotation is not None:
+                    _visit(field_info.annotation)
+
+        ordered_nodes.append(current)
+
+    _visit(annotation)
+    return ordered_nodes
+
+
+@dataclass
+class SchemaTypes:
+    models: list[type[BaseModel]] = field(default_factory=list)
+    enums: list[type[Enum]] = field(default_factory=list)
+
+
+def _collect_schema_types(model: type[BaseModel]) -> SchemaTypes:
+    schema_types = SchemaTypes()
+    for node in _walk_schema(model):
+        if _is_pydantic_model(node):
+            schema_types.models.append(node)
+        elif _is_enum(node):
+            schema_types.enums.append(node)
+
+    schema_types.models = [nested_model for nested_model in schema_types.models if nested_model is not model]
+    return schema_types
 
 
 def _emit_enum_block(enum_type: type[Enum]) -> list[str]:
@@ -173,9 +162,8 @@ def run_generation(
     schema_str = schema_path.read_text(encoding="utf-8")
     model = parser.parse(schema_str)
 
-    nested_models = collect_nested_models(model)
-    enum_types = collect_enums(model)
-    all_models = [*nested_models, model]
+    schema_types = _collect_schema_types(model)
+    all_models = [*schema_types.models, model]
 
     all_imports: set[tuple[str, str]] = set()
     class_blocks: list[tuple[str, list[str]]] = []
@@ -190,11 +178,11 @@ def run_generation(
     lines.append("# This file was auto-generated by ezconfy. Do not edit manually.")
     for module, name in sorted(all_imports):
         lines.append(f"from {module} import {name}")
-    if enum_types:
+    if schema_types.enums:
         lines.append("from enum import Enum")
     lines.append("from pydantic import BaseModel, Field")
 
-    for enum_type in enum_types:
+    for enum_type in schema_types.enums:
         lines.append("")
         lines.append("")
         lines.extend(_emit_enum_block(enum_type))
