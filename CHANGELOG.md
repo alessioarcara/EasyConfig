@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2025-04-04
+- Added support for dynamic types in the generated config object 
+- Added support enum generation from schema 
+
 ## [0.1.2] - 2025-04-02
 
 ### Fixed
