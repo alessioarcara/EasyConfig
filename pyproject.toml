@@ -13,12 +13,16 @@ authors = [
     { name = "Alessio Arcara", email = "alessio.arcara@studio.unibo.it" },
     { name = "Francesco Baiocchi", email = "francesco.baiocchi2@studio.unibo.it" },
 ]
+
 dependencies = [
     "loguru>=0.7.3",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
     "typer>=0.24.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/alessioarcara/EzConfy"
 
 [project.optional-dependencies]
 dev = [

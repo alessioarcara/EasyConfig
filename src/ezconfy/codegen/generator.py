@@ -5,7 +5,7 @@ from loguru import logger
 from ezconfy.codegen.emitter import render
 from ezconfy.codegen.extractors import EnumExtractor, ModelExtractor
 from ezconfy.codegen.walker import walk_schema
-from ezconfy.schema_parser import SchemaParser
+from ezconfy.core.schema_parser import SchemaParser
 
 
 def run_generation(

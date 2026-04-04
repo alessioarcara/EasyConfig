@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from ezconfy.config_builder import ConfigBuilder
+from ezconfy.core.config_builder import ConfigBuilder
 
 
 def _write_temp_yaml(tmpdir: Path, content: str, name: str = "config.yaml") -> Path:

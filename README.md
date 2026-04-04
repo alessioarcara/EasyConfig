@@ -2,7 +2,9 @@
   <img src="docs/logo.svg" alt="ezconfy logo" width="280" />
 </p>
 
-EasyConfig is designed for ML/data science projects that want **typed, validated configs with automatic object wiring** - without the complexity of a full framework like Hydra.
+## Why ezconfy?
+
+EzConfy is designed for ML/data science projects that want **typed, validated configs with automatic object wiring** — without the complexity of a full framework like Hydra.
 
 ## Installation
 

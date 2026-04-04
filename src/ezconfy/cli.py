@@ -4,7 +4,7 @@ import typer
 from loguru import logger
 
 from ezconfy.codegen import run_generation
-from ezconfy.schema_parser import SchemaParser
+from ezconfy.core.schema_parser import SchemaParser
 
 app = typer.Typer()
 

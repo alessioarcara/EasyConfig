@@ -8,8 +8,8 @@ from typing import Any, ForwardRef, TypeAlias, cast, get_args
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
-from ezconfy.exceptions import SchemaError
-from ezconfy.module_loader import ModuleLoader
+from ezconfy.core.exceptions import SchemaError
+from ezconfy.core.module_loader import ModuleLoader
 
 TypeNamespace: TypeAlias = dict[str, Any]
 
