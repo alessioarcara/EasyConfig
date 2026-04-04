@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from ezconfy.codegen import run_generation
-from ezconfy.schema_parser import SchemaParser
+from ezconfy.core.schema_parser import SchemaParser
 
 flat_schema = """
 wandb_run_name: str

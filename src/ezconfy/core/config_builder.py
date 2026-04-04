@@ -4,11 +4,11 @@ from typing import Any
 from loguru import logger
 from pydantic import BaseModel, ValidationError
 
-from ezconfy.exceptions import InstantiationError
-from ezconfy.instantiator import Instantiator
-from ezconfy.io import read_yaml
-from ezconfy.module_loader import ModuleLoader
-from ezconfy.schema_parser import SchemaParser
+from ezconfy.core.exceptions import InstantiationError
+from ezconfy.core.instantiator import Instantiator
+from ezconfy.core.io import read_yaml
+from ezconfy.core.module_loader import ModuleLoader
+from ezconfy.core.schema_parser import SchemaParser
 
 PathLike = str | Path
 

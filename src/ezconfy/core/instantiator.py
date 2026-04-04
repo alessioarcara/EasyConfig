@@ -2,8 +2,8 @@ import re
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
-from ezconfy.exceptions import InstantiationError
-from ezconfy.module_loader import ModuleLoader
+from ezconfy.core.exceptions import InstantiationError
+from ezconfy.core.module_loader import ModuleLoader
 
 PLACEHOLDER_PATTERN = re.compile(r"\$\{([\w\.\(\)]+)\}")
 
