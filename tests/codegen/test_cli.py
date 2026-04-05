@@ -168,3 +168,19 @@ def test_generated_code_with_dynamic_types(tmp_path: Path, parser: SchemaParser)
 
     assert "from my_model import MyModel" in code
     assert "model: MyModel = Field(...)" in code
+
+
+def test_generated_code_supports_inheritance(tmp_path: Path, parser: SchemaParser) -> None:
+    schema = """
+schema:
+    A:
+        x: str
+    B < A:
+        y: int
+    """
+    _, code = _generate(schema, tmp_path, parser)
+
+    assert "class A(BaseModel):" in code
+    assert "class B(A):" in code
+    assert "x: str = Field(...)" in code
+    assert "y: int = Field(...)" in code

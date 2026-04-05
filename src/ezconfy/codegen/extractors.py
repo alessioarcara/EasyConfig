@@ -37,8 +37,14 @@ class ModelExtractor(Extractor):
         imports: set[tuple[str, str]] = {("pydantic", "BaseModel"), ("pydantic", "Field")}
 
         for model in self.results:
+            base = model.__bases__[0]
+            parent_fields = set(base.model_fields.keys()) if is_pydantic_model(base) else set()
+
             field_lines: list[str] = []
             for field_name, field_info in model.model_fields.items():
+                # skip inherited fields to avoid duplication
+                if field_name in parent_fields:
+                    continue
                 annotation = field_info.annotation
                 if annotation is None:
                     logger.error(f"Field '{field_name}' has no type annotation.")
@@ -51,7 +57,7 @@ class ModelExtractor(Extractor):
             if not field_lines:
                 field_lines.append("    pass")
 
-            body.extend(["", "", f"class {model.__name__}(BaseModel):"])
+            body.extend(["", "", f"class {model.__name__}({base.__name__}):"])
             body.extend(field_lines)
 
         return body, imports

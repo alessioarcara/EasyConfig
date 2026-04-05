@@ -85,15 +85,17 @@ class SchemaParser:
                 raw_name = raw_map[name]
                 self._build_custom_type(raw_name, custom_types_def[raw_name])
 
-    def _build_custom_type(self, raw_name: str, type_def: Any) -> None:
-        base_class = BaseModel
-        name = raw_name.strip()
+    def _parse_inheritance(self, raw_name: str, context: str, path: str) -> tuple[str, type[BaseModel] | Any]:
+        if "<" not in raw_name:
+            return raw_name.strip(), BaseModel
 
-        if "<" in name:
-            name, parent_name = map(str.strip, name.split("<", 1))
-            if parent_name not in self.type_aliases:
-                raise SchemaError(f"Base type '{parent_name}' not defined for '{name}' at '{raw_name}'.")
-            base_class = self.type_aliases[parent_name]
+        name, parent_name = map(str.strip, raw_name.split("<", 1))
+        if parent_name not in self.type_aliases:
+            raise SchemaError(f"Unknown parent type '{parent_name}' for '{name}' at '{path}'.")
+        return name, self.type_aliases[parent_name]
+
+    def _build_custom_type(self, raw_name: str, type_def: Any) -> None:
+        name, base_class = self._parse_inheritance(raw_name, "custom type", raw_name)
 
         self._validate_name(name, "custom type", raw_name)
 
@@ -118,13 +120,15 @@ class SchemaParser:
     ) -> type[BaseModel]:
         model_fields: dict[str, tuple[Any, Any]] = {}
 
-        for field_name, value in data.items():
+        for raw_field_name, value in data.items():
+            field_name, field_base = self._parse_inheritance(raw_field_name, "field", f"{path}.{raw_field_name}")
             field_path = f"{path}.{field_name}" if path else field_name
             self._validate_name(field_name, "field", field_path)
 
             if isinstance(value, dict):
                 nested_name = "".join(w.capitalize() for w in field_name.split("_"))
-                nested_model = self._build_model(nested_name, value, field_path)
+                nested_model = self._build_model(nested_name, value, field_path, base_class=field_base)
+                self.type_aliases[nested_name] = nested_model
                 model_fields[field_name] = (nested_model, Field(...))
             else:
                 parts = [p.strip() for p in str(value).split("=", 1)]
