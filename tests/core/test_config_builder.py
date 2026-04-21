@@ -255,6 +255,59 @@ bert: {module_file}:Bert
     assert cfg.bert.model_name == "bert-base-uncased"
 
 
+def test_placeholder_multiply_by_literal(fake_dataset_package: str, tmp_path: Path) -> None:
+    config = f"""
+num_classes: 10
+dataset:
+    _target_type_: {fake_dataset_package}.dataset:FakeDataset
+    _init_args_:
+        num_classes: ${{num_classes * 2}}
+"""
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+    built_config: Any = ConfigBuilder.from_files(config_paths=config_file)
+    assert built_config["dataset"].num_classes == 20
+
+
+def test_placeholder_add_two_config_values(tmp_path: Path) -> None:
+    config = """
+a: 3
+b: 7
+total: ${a + b}
+"""
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+    built_config: Any = ConfigBuilder.from_files(config_paths=config_file)
+    assert built_config["total"] == 10
+
+
+def test_placeholder_expression_with_attribute_access(fake_dataset_package: str, tmp_path: Path) -> None:
+    config = f"""
+dataset:
+    _target_type_: {fake_dataset_package}.dataset:FakeDataset
+    _init_args_:
+        num_classes: 5
+model:
+    _target_type_: {fake_dataset_package}.model:FakeModel
+    _init_args_:
+        dout: ${{dataset.num_classes * 4}}
+"""
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+    built_config: Any = ConfigBuilder.from_files(config_paths=config_file)
+    assert built_config["model"].dout == 20
+
+
+def test_placeholder_complex_expression(tmp_path: Path) -> None:
+    config = """
+lr: 0.1
+warmup_lr: ${lr * 10}
+wd: 0.01
+combined: ${lr + wd}
+"""
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+    built_config: Any = ConfigBuilder.from_files(config_paths=config_file)
+    assert built_config["warmup_lr"] == pytest.approx(1.0)
+    assert built_config["combined"] == pytest.approx(0.11)
+
+
 def test_extra_config_fields_preserved_when_schema_is_provided(tmp_path: Path) -> None:
     schema = """
 lr: float

@@ -1,11 +1,31 @@
+import ast
+import operator as op_module
 import re
 from graphlib import CycleError, TopologicalSorter
-from typing import Any
+from typing import Any, Callable
 
 from ezconfy.core.exceptions import InstantiationError
 from ezconfy.core.module_loader import ModuleLoader
 
-PLACEHOLDER_PATTERN = re.compile(r"\$\{([\w\.\(\)]+)\}")
+# Matches strings like "${...}" and captures the content inside the braces for further processing.
+PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}]+)\}")
+# Matches simple paths like "A", "A.num_classes", "A.method()", etc., which can be resolved directly.
+_SIMPLE_PATH_RE = re.compile(r"^[\w\.\(\)]+$")
+
+_BINARY_OPS: dict[type, Callable[[Any, Any], Any]] = {
+    ast.Add: op_module.add,
+    ast.Sub: op_module.sub,
+    ast.Mult: op_module.mul,
+    ast.Div: op_module.truediv,
+    ast.FloorDiv: op_module.floordiv,
+    ast.Mod: op_module.mod,
+    ast.Pow: op_module.pow,
+}
+
+_UNARY_OPS: dict[type, Callable[[Any], Any]] = {
+    ast.USub: op_module.neg,
+    ast.UAdd: op_module.pos,
+}
 
 
 class Instantiator:
@@ -17,22 +37,6 @@ class Instantiator:
         return self._instantiate_topologically(config, dep_graph)
 
     def _build_dependency_graph(self, config: dict[str, Any]) -> dict[str, set[str]]:
-        """
-        Example:
-
-        config = {
-            "A": "value",
-            "B": "{A}",
-            "C": "{B}.{A}"
-        }
-
-        the resulting dependency graph would be:
-        {
-            "A": set(),
-            "B": {"A"},
-            "C": {"A", "B"}
-        }
-        """
         graph = {}
         nodes = set(config.keys())
         for name, node in config.items():
@@ -48,7 +52,12 @@ class Instantiator:
     def _find_placeholders(self, node: Any) -> set[str]:
         if isinstance(node, str):
             m = PLACEHOLDER_PATTERN.fullmatch(node)
-            return {m.group(1)} if m else set()
+            if not m:
+                return set()
+            content = m.group(1).strip()
+            if _SIMPLE_PATH_RE.match(content):
+                return {content}
+            return self._extract_expr_deps(content)
 
         if isinstance(node, dict):
             return {dep for v in node.values() for dep in self._find_placeholders(v)}
@@ -57,6 +66,13 @@ class Instantiator:
             return {dep for item in node for dep in self._find_placeholders(item)}
 
         return set()
+
+    def _extract_expr_deps(self, expr: str) -> set[str]:
+        try:
+            tree = ast.parse(expr, mode="eval")
+        except SyntaxError as e:
+            raise InstantiationError(f"Invalid expression '${{{expr}}}': {e}") from e
+        return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
 
     def _resolve_path(self, path: str, resolved_config: dict[str, Any]) -> Any:
         """
@@ -109,9 +125,7 @@ class Instantiator:
         for part in parts[1:]:
             is_method = part.endswith("()")
             name = part[:-2] if is_method else part
-
             current = _get_attr(current, name)
-
             if is_method:
                 if not callable(current):
                     raise InstantiationError(f"'{name}' is not callable on {current}")
@@ -119,34 +133,72 @@ class Instantiator:
 
         return current
 
+    def _attr_to_path(self, node: ast.Attribute) -> str:
+        parts: list[str] = []
+        current: ast.expr = node
+        while isinstance(current, ast.Attribute):
+            parts.append(current.attr)
+            current = current.value
+        if isinstance(current, ast.Name):
+            parts.append(current.id)
+        return ".".join(reversed(parts))
+
+    def _eval_node(self, node: ast.expr, expr: str, resolved_config: dict[str, Any]) -> Any:
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            return self._resolve_path(node.id, resolved_config)
+        if isinstance(node, ast.Attribute):
+            return self._resolve_path(self._attr_to_path(node), resolved_config)
+        if isinstance(node, ast.BinOp):
+            left = self._eval_node(node.left, expr, resolved_config)
+            right = self._eval_node(node.right, expr, resolved_config)
+            op_func = _BINARY_OPS.get(type(node.op))
+            if op_func is None:
+                raise InstantiationError(f"Unsupported operator in '${{{expr}}}'")
+            return op_func(left, right)
+        if isinstance(node, ast.UnaryOp):
+            operand = self._eval_node(node.operand, expr, resolved_config)
+            unary_op_func = _UNARY_OPS.get(type(node.op))
+            if unary_op_func is None:
+                raise InstantiationError(f"Unsupported operator in '${{{expr}}}'")
+            return unary_op_func(operand)
+        raise InstantiationError(f"Unsupported operation '{type(node).__name__}' in '${{{expr}}}'")
+
+    def _evaluate_expression(self, expr: str, resolved_config: dict[str, Any]) -> Any:
+        try:
+            tree = ast.parse(expr, mode="eval")
+        except SyntaxError as e:
+            raise InstantiationError(f"Invalid expression '${{{expr}}}': {e}") from e
+        return self._eval_node(tree.body, expr, resolved_config)
+
     def _instantiate_obj(self, node: Any, resolved_config: dict[str, Any]) -> Any:
         if isinstance(node, str) and (m := PLACEHOLDER_PATTERN.fullmatch(node)):
-            return self._resolve_path(m.group(1), resolved_config)
+            content = m.group(1).strip()
+            if _SIMPLE_PATH_RE.match(content):
+                return self._resolve_path(content, resolved_config)
+            return self._evaluate_expression(content, resolved_config)
 
         if isinstance(node, dict):
             if "_target_type_" in node:
                 target = node["_target_type_"]
                 cls: Any = self._loader.load_class(target)
-                raw_args = node.get("_init_args_", {})
-                resolved_args = {k: self._instantiate_obj(v, resolved_config) for k, v in raw_args.items()}
-
-                # Determine which method to use for instantiation
-                init_method_name = node.get("_init_method_", "__init__")
-                if init_method_name == "__init__":
-                    try:
-                        return cls(**resolved_args)
-                    except Exception as e:
-                        raise InstantiationError(f"Failed to instantiate '{target}': {e}") from e
-                else:
-                    init_method = getattr(cls, init_method_name)
-                    if not callable(init_method):
+                resolved_args = {
+                    k: self._instantiate_obj(v, resolved_config) for k, v in node.get("_init_args_", {}).items()
+                }
+                init_method_name = node.get("_init_method_")
+                if init_method_name:
+                    factory = getattr(cls, init_method_name)
+                    if not callable(factory):
                         raise InstantiationError(f"'{init_method_name}' is not callable on {cls}")
-                    try:
-                        return init_method(**resolved_args)
-                    except Exception as e:
-                        raise InstantiationError(
-                            f"Failed to instantiate '{target}' via '{init_method_name}': {e}"
-                        ) from e
+                    error_context = f"'{target}' via '{init_method_name}'"
+                else:
+                    factory = cls
+                    error_context = f"'{target}'"
+                try:
+                    return factory(**resolved_args)
+                except Exception as e:
+                    raise InstantiationError(f"Failed to instantiate {error_context}: {e}") from e
 
             return {k: self._instantiate_obj(v, resolved_config) for k, v in node.items()}
 
@@ -156,18 +208,18 @@ class Instantiator:
         return node
 
     def _instantiate_topologically(self, config: dict[str, Any], graph: dict[str, set[str]]) -> dict[str, Any]:
-        resolved_config: dict[str, Any] = {}
-        sorter = TopologicalSorter(graph)
-
         try:
-            for key in sorter.static_order():
-                try:
-                    resolved_config[key] = self._instantiate_obj(config[key], resolved_config)
-                except InstantiationError:
-                    raise
-                except Exception as e:
-                    raise InstantiationError(f"Unexpected error while processing config key '{key}': {e}") from e
+            order = list(TopologicalSorter(graph).static_order())
         except CycleError as e:
             raise InstantiationError(f"Circular reference detected in configuration: {e}") from e
+
+        resolved_config: dict[str, Any] = {}
+        for key in order:
+            try:
+                resolved_config[key] = self._instantiate_obj(config[key], resolved_config)
+            except InstantiationError:
+                raise
+            except Exception as e:
+                raise InstantiationError(f"Unexpected error while processing config key '{key}': {e}") from e
 
         return resolved_config
