@@ -34,7 +34,7 @@ class ModelExtractor(Extractor):
 
     def emit(self) -> tuple[list[str], set[tuple[str, str]]]:
         body: list[str] = []
-        imports: set[tuple[str, str]] = {("pydantic", "BaseModel"), ("pydantic", "Field")}
+        imports: set[tuple[str, str]] = {("pydantic", "BaseModel"), ("pydantic", "ConfigDict"), ("pydantic", "Field")}
 
         for model in self.results:
             base = model.__bases__[0]
@@ -58,6 +58,7 @@ class ModelExtractor(Extractor):
                 field_lines.append("    pass")
 
             body.extend(["", "", f"class {model.__name__}({base.__name__}):"])
+            body.append("    model_config = ConfigDict(arbitrary_types_allowed=True)")
             body.extend(field_lines)
 
         return body, imports
