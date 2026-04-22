@@ -325,3 +325,38 @@ wd: 0.0001
     assert cfg.wd == 0.0001
     print(type(cfg.lr))
     print(type(cfg.wd))
+
+
+def test_schema_aware_type_casting(tmp_path: Path) -> None:
+    """Schema types should be cast during instantiation: scalars and placeholders."""
+    module_content = """
+from pathlib import Path
+
+
+class Processor:
+    def __init__(self, path: Path):
+        self.path = path
+"""
+    module_file = _write_temp_yaml(tmp_path, module_content, "processor.py")
+
+    schema = f"""
+types:
+    Path: pathlib:Path
+schema:
+    data_path: Path
+    processor: {module_file}:Processor
+"""
+    config = f"""
+data_path: /some/path
+processor:
+    _target_type_: {module_file}:Processor
+    _init_args_:
+        path: ${{data_path}}
+"""
+    schema_file = _write_temp_yaml(tmp_path, schema, "schema.yaml")
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+
+    cfg: Any = ConfigBuilder.from_files(config_paths=config_file, schema_path=schema_file)
+
+    assert isinstance(cfg.data_path, Path)
+    assert isinstance(cfg.processor.path, Path)

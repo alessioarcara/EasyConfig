@@ -1,20 +1,22 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="ezconfy logo" width="280" />
+  <img src="docs/logo.svg" alt="EzConfy logo" width="280" />
 </p>
 
-## Why ezconfy?
+<p align="center">
+  <strong>YAML-based configuration with Pydantic validation and dynamic object instantiation.</strong>
+</p>
 
-EzConfy is designed for ML projects that want **typed, validated configs with automatic object wiring** - without the complexity of a full framework like Hydra.
+<p align="center">
+  <a href="https://pypi.org/project/ezconfy/"><img src="https://img.shields.io/pypi/v/ezconfy?color=blue&label=PyPI" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/ezconfy/"><img src="https://img.shields.io/pypi/pyversions/ezconfy" alt="Python versions"></a>
+  <a href="https://github.com/alessioarcara/EzConfy/blob/main/LICENSE"><img src="https://img.shields.io/github/license/alessioarcara/EzConfy" alt="License"></a>
+</p>
 
-## Installation
+---
 
-```bash
-pip install ezconfy
-```
+## Why EzConfy?
 
-## Quick Start
-
-Define a schema and a config file, then load them:
+ML projects constantly deal with configuration: learning rates, model parameters, dataset options, augmentation pipelines. EzConfy gives you **typed, validated configs with automatic object wiring** — without the complexity of a full framework like Hydra.
 
 ```python
 from ezconfy import ConfigBuilder
@@ -23,9 +25,58 @@ cfg = ConfigBuilder.from_files(config_paths="config.yaml", schema_path="schema.y
 print(cfg.training.batch_size)  # validated, typed access
 ```
 
+### What you get
+
+| Feature | Description |
+|---------|-------------|
+| **Pydantic validation** | Type checking with clear error messages |
+| **Schema-aware casting** | Strings become `Path` objects, etc. — before constructors run |
+| **Dynamic instantiation** | Construct any Python class from YAML via `_target_type_` |
+| **Placeholders** | `${key}`, attribute access, method calls, arithmetic |
+| **Multi-file merge** | Split configs across files, override per experiment |
+| **Code generation** | Generate Pydantic models for editor autocompletion |
+
+## Installation
+
+```bash
+pip install ezconfy
+```
+
+Requires Python 3.11+.
+
+## Quick Start
+
+**config.yaml**
+```yaml
+lr: 0.001
+batch_size: 32
+data_path: ./data
+```
+
+**schema.yaml**
+```yaml
+lr: float
+batch_size: int
+data_path: pathlib:Path
+```
+
+**train.py**
+```python
+from ezconfy import ConfigBuilder
+
+cfg = ConfigBuilder.from_files(
+    config_paths="config.yaml",
+    schema_path="schema.yaml",
+)
+
+print(cfg.lr)          # 0.001 (float)
+print(cfg.batch_size)  # 32 (int)
+print(cfg.data_path)   # PosixPath('data') — automatically cast
+```
+
 ## Schema
 
-A schema file describes the expected shape and types of your configuration. It can define custom types and the root structure:
+A schema file describes the expected shape and types of your configuration:
 
 ```yaml
 types:
@@ -45,10 +96,13 @@ schema:
     optimizer: OptimizerType
 ```
 
-### Supported type syntax
+If no `types` are needed, the entire YAML is treated as the root schema (no `schema:` wrapper required).
+
+<details>
+<summary><strong>Supported type syntax</strong></summary>
 
 | Syntax | Meaning |
-|---|---|
+|--------|---------|
 | `int`, `float`, `str`, `bool` | Primitive types |
 | `type?` | Optional (defaults to `None`) |
 | `type = value` | Type with default |
@@ -59,11 +113,11 @@ schema:
 | `pathlib:Path` | External type (import path) |
 | `/path/to/file.py:ClassName` | External type (file path) |
 
-If no `types` are needed, the entire YAML is treated as the root schema (no `schema:` wrapper required).
+</details>
 
 ## Object Instantiation
 
-ezconfy can instantiate Python objects directly from config using `_target_type_`:
+Construct Python objects directly from config using `_target_type_`:
 
 ```yaml
 dataset:
@@ -73,7 +127,7 @@ dataset:
     root: /data
 ```
 
-Use `_init_method_` to call an alternative constructor (e.g. `from_pretrained`):
+Use `_init_method_` for alternative constructors (e.g. `from_pretrained`):
 
 ```yaml
 encoder:
@@ -83,33 +137,38 @@ encoder:
     model_name: bert-base-uncased
 ```
 
-## Placeholder Injection
+## Placeholders & Expressions
 
-Reference other config values with `${key}`. Supports attribute access and method calls:
+Reference other config values with `${key}`. Supports attribute access, method calls, and arithmetic:
 
 ```yaml
+lr: 0.001
+warmup_lr: ${lr * 10}                       # arithmetic
+
 num_classes: 10
 
 dataset:
   _target_type_: mypackage.data:MyDataset
   _init_args_:
-    num_classes: ${num_classes}   # scalar reference
+    num_classes: ${num_classes}               # scalar reference
 
 model:
   _target_type_: mypackage.models:Classifier
   _init_args_:
-    in_features: ${dataset.num_classes}   # attribute access
-    params: ${encoder.parameters()}       # method call
+    in_features: ${dataset.num_classes}       # attribute access
+    params: ${encoder.parameters()}           # method call
 ```
 
-Objects are instantiated in topological order based on their dependencies, so forward references work automatically.
+Objects are instantiated in topological order based on their dependencies — forward references work automatically.
 
 ## Multi-file Configs & Overrides
 
 Pass multiple files — they are deep-merged in order (later files win on conflicts):
 
 ```python
-cfg = ConfigBuilder.from_files(config_paths=["base.yaml", "experiment.yaml"])
+cfg = ConfigBuilder.from_files(
+    config_paths=["base.yaml", "experiment.yaml"],
+)
 ```
 
 Apply programmatic overrides on top:
@@ -123,14 +182,16 @@ cfg = ConfigBuilder.from_files(
 
 ## Code Generation CLI
 
-Generate a Pydantic model file from a schema:
+Generate a Pydantic model file from a schema for editor autocompletion and static analysis:
 
 ```bash
-ezconfy generate schema.yaml output.py
+ezconfy generate schema.yaml -o models.py
 ```
 
-This produces a standalone `.py` file with `BaseModel` classes matching the schema, useful for editor autocompletion and static analysis.
+## Documentation
 
-## Requirements
+Full documentation: [alessioarcara.github.io/EzConfy](https://alessioarcara.github.io/EzConfy/)
 
-- Python 3.11+
+## License
+
+[MIT](LICENSE)

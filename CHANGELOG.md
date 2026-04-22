@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-04-22
+
+### Added
+- Schema-aware type casting during instantiation: when a schema is defined, values are now cast to their schema types **before** being passed to `_target_type_` constructors (e.g. a string `"./data"` is cast to `Path("./data")` if the schema declares `data_root: pathlib:Path`)
+
 ## [0.1.8] - 2026-04-21
 
 ### Fixed
@@ -59,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - External type support (`module:ClassName` and file path syntax)
 - Topological ordering for resolving object instantiation dependencies
 
-[Unreleased]: https://github.com/alessioarcara/EasyConfig/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/alessioarcara/EasyConfig/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/alessioarcara/EasyConfig/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/alessioarcara/EasyConfig/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/alessioarcara/EasyConfig/compare/v0.1.5...v0.1.7
 [0.1.5]: https://github.com/alessioarcara/EasyConfig/compare/v0.1.4...v0.1.5

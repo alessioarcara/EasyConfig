@@ -1,12 +1,46 @@
-site_name: EasyConfig Documentation
+site_name: EzConfy
+site_description: YAML-based configuration with Pydantic validation and dynamic object instantiation
+site_url: https://alessioarcara.github.io/EzConfy/
+repo_url: https://github.com/alessioarcara/EzConfy
+repo_name: alessioarcara/EzConfy
+
 theme:
   name: material
+  logo: logo.svg
+  favicon: logo.svg
   palette:
-    scheme: slate
-    primary: indigo
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
   features:
     - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - navigation.tabs
     - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.instant
+    - navigation.instant.progress
+    - search.suggest
+    - search.highlight
+    - toc.follow
 
 plugins:
   - search
@@ -14,3 +48,42 @@ plugins:
       handlers:
         python:
           paths: [.]
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - attr_list
+  - md_in_html
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/alessioarcara/EzConfy
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/ezconfy/
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Guides:
+      - Schema & Validation: schema.md
+      - Object Instantiation: instantiation.md
+      - Placeholders & Expressions: placeholders.md
+      - Multi-file Configs: multi-file.md
+      - Code Generation: codegen.md

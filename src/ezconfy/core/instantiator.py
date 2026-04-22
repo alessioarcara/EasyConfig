@@ -2,7 +2,9 @@ import ast
 import operator as op_module
 import re
 from graphlib import CycleError, TopologicalSorter
-from typing import Any, Callable
+from typing import Any, Callable, get_args, get_origin
+
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from ezconfy.core.exceptions import InstantiationError
 from ezconfy.core.module_loader import ModuleLoader
@@ -32,9 +34,9 @@ class Instantiator:
     def __init__(self, module_loader: ModuleLoader | None = None) -> None:
         self._loader = module_loader if module_loader is not None else ModuleLoader()
 
-    def __call__(self, config: dict[str, Any]) -> dict[str, Any]:
+    def __call__(self, config: dict[str, Any], schema_model: type[BaseModel] | None = None) -> dict[str, Any]:
         dep_graph = self._build_dependency_graph(config)
-        return self._instantiate_topologically(config, dep_graph)
+        return self._instantiate_topologically(config, dep_graph, schema_model=schema_model)
 
     def _build_dependency_graph(self, config: dict[str, Any]) -> dict[str, set[str]]:
         graph = {}
@@ -172,19 +174,23 @@ class Instantiator:
             raise InstantiationError(f"Invalid expression '${{{expr}}}': {e}") from e
         return self._eval_node(tree.body, expr, resolved_config)
 
-    def _instantiate_obj(self, node: Any, resolved_config: dict[str, Any]) -> Any:
+    def _instantiate_obj(self, node: Any, resolved_config: dict[str, Any], schema_type: Any = None) -> Any:
         if isinstance(node, str) and (m := PLACEHOLDER_PATTERN.fullmatch(node)):
             content = m.group(1).strip()
             if _SIMPLE_PATH_RE.match(content):
-                return self._resolve_path(content, resolved_config)
-            return self._evaluate_expression(content, resolved_config)
+                result = self._resolve_path(content, resolved_config)
+            else:
+                result = self._evaluate_expression(content, resolved_config)
+            return self._try_cast(result, schema_type)
 
         if isinstance(node, dict):
             if "_target_type_" in node:
                 target = node["_target_type_"]
                 cls: Any = self._loader.load_class(target)
+                arg_types = self._get_model_field_types(schema_type)
                 resolved_args = {
-                    k: self._instantiate_obj(v, resolved_config) for k, v in node.get("_init_args_", {}).items()
+                    k: self._instantiate_obj(v, resolved_config, schema_type=arg_types.get(k))
+                    for k, v in node.get("_init_args_", {}).items()
                 }
                 init_method_name = node.get("_init_method_")
                 if init_method_name:
@@ -200,26 +206,63 @@ class Instantiator:
                 except Exception as e:
                     raise InstantiationError(f"Failed to instantiate {error_context}: {e}") from e
 
-            return {k: self._instantiate_obj(v, resolved_config) for k, v in node.items()}
+            field_types = self._get_model_field_types(schema_type)
+            return {
+                k: self._instantiate_obj(v, resolved_config, schema_type=field_types.get(k)) for k, v in node.items()
+            }
 
         if isinstance(node, list):
-            return [self._instantiate_obj(i, resolved_config) for i in node]
+            elem_type = self._get_list_element_type(schema_type)
+            return [self._instantiate_obj(i, resolved_config, schema_type=elem_type) for i in node]
 
-        return node
+        return self._try_cast(node, schema_type)
 
-    def _instantiate_topologically(self, config: dict[str, Any], graph: dict[str, set[str]]) -> dict[str, Any]:
+    def _instantiate_topologically(
+        self, config: dict[str, Any], graph: dict[str, set[str]], schema_model: type[BaseModel] | None = None
+    ) -> dict[str, Any]:
         try:
             order = list(TopologicalSorter(graph).static_order())
         except CycleError as e:
             raise InstantiationError(f"Circular reference detected in configuration: {e}") from e
 
+        top_level_types = self._get_model_field_types(schema_model)
         resolved_config: dict[str, Any] = {}
         for key in order:
             try:
-                resolved_config[key] = self._instantiate_obj(config[key], resolved_config)
+                resolved_config[key] = self._instantiate_obj(
+                    config[key], resolved_config, schema_type=top_level_types.get(key)
+                )
             except InstantiationError:
                 raise
             except Exception as e:
                 raise InstantiationError(f"Unexpected error while processing config key '{key}': {e}") from e
 
         return resolved_config
+
+    @staticmethod
+    def _try_cast(value: Any, schema_type: Any) -> Any:
+        if schema_type is None:
+            return value
+        try:
+            adapter = TypeAdapter(schema_type, config=ConfigDict(arbitrary_types_allowed=True))
+            return adapter.validate_python(value)
+        except Exception:
+            return value
+
+    @staticmethod
+    def _get_model_field_types(schema_type: Any) -> dict[str, Any]:
+        """
+        Given a Pydantic BaseModel, it returns a dict mapping field names to their annotated types.
+        This lets the instantiator know the expected type of each field, which can be used for type casting.
+        """
+        if schema_type is not None and isinstance(schema_type, type) and issubclass(schema_type, BaseModel):
+            return {name: info.annotation for name, info in schema_type.model_fields.items()}
+        return {}
+
+    @staticmethod
+    def _get_list_element_type(schema_type: Any) -> Any:
+        if schema_type is not None and get_origin(schema_type) is list:
+            args = get_args(schema_type)
+            if args:
+                return args[0]
+        return None

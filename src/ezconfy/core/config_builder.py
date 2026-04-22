@@ -52,7 +52,7 @@ class ConfigBuilder:
         if overrides:
             merged_config = self._deep_merge(merged_config, overrides)
 
-        instantiated = self.instantiator(merged_config)
+        instantiated = self.instantiator(merged_config, schema_model=self.schema_model)
 
         if self.schema_model is None:
             return instantiated
