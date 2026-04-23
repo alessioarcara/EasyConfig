@@ -6,8 +6,8 @@ repo_name: alessioarcara/EzConfy
 
 theme:
   name: material
-  logo: logo.svg
-  favicon: logo.svg
+  logo: logo-mark.svg
+  favicon: logo-mark.svg
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default

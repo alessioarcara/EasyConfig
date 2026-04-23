@@ -11,7 +11,8 @@ hide:
 <div class="hero" markdown>
 
 <p align="center">
-  <img src="logo.svg" alt="EzConfy logo" width="280" />
+  <img src="logo.svg#only-dark" alt="EzConfy logo" width="280" />
+  <img src="logo-light.svg#only-light" alt="EzConfy logo" width="280" />
 </p>
 
 <p align="center" class="hero-tagline" style="font-size: 1.3em; opacity: 0.8; margin-top: -0.5em;">
@@ -20,7 +21,6 @@ hide:
 
 <p align="center">
   <a href="https://pypi.org/project/ezconfy/"><img src="https://img.shields.io/pypi/v/ezconfy?color=blue&label=PyPI" alt="PyPI version"></a>
-  <a href="https://pypi.org/project/ezconfy/"><img src="https://img.shields.io/pypi/pyversions/ezconfy" alt="Python versions"></a>
   <a href="https://github.com/alessioarcara/EzConfy/blob/main/LICENSE"><img src="https://img.shields.io/github/license/alessioarcara/EzConfy" alt="License"></a>
 </p>
 

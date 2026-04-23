@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="EzConfy logo" width="280" />
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/logo-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo.svg">
+    <img src="docs/logo.svg" alt="EzConfy logo" width="280" />
+  </picture>
 </p>
 
 <p align="center">
