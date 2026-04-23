@@ -4,13 +4,14 @@ import re
 from graphlib import CycleError, TopologicalSorter
 from typing import Any, Callable, get_args, get_origin
 
+from loguru import logger
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from ezconfy.core.exceptions import InstantiationError
 from ezconfy.core.module_loader import ModuleLoader
 
 # Matches strings like "${...}" and captures the content inside the braces for further processing.
-PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}]+)\}")
+_PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}]+)\}")
 # Matches simple paths like "A", "A.num_classes", "A.method()", etc., which can be resolved directly.
 _SIMPLE_PATH_RE = re.compile(r"^[\w\.\(\)]+$")
 
@@ -30,6 +31,22 @@ _UNARY_OPS: dict[type, Callable[[Any], Any]] = {
 }
 
 
+def _obj_repr(obj: Any) -> str:
+    if isinstance(obj, dict):
+        return f"dict with keys {list(obj.keys())}"
+    return type(obj).__name__
+
+
+def _get_attr(obj: Any, name: str) -> Any:
+    if isinstance(obj, dict):
+        if name in obj:
+            return obj[name]
+        raise InstantiationError(f"Key '{name}' not found in {_obj_repr(obj)}")
+    if hasattr(obj, name):
+        return getattr(obj, name)
+    raise InstantiationError(f"Cannot resolve '{name}' on {_obj_repr(obj)}")
+
+
 class Instantiator:
     def __init__(self, module_loader: ModuleLoader | None = None) -> None:
         self._loader = module_loader if module_loader is not None else ModuleLoader()
@@ -38,6 +55,7 @@ class Instantiator:
         dep_graph = self._build_dependency_graph(config)
         return self._instantiate_topologically(config, dep_graph, schema_model=schema_model)
 
+    # --- Dependency resolution ---
     def _build_dependency_graph(self, config: dict[str, Any]) -> dict[str, set[str]]:
         graph = {}
         nodes = set(config.keys())
@@ -53,7 +71,7 @@ class Instantiator:
 
     def _find_placeholders(self, node: Any) -> set[str]:
         if isinstance(node, str):
-            m = PLACEHOLDER_PATTERN.fullmatch(node)
+            m = _PLACEHOLDER_PATTERN.fullmatch(node)
             if not m:
                 return set()
             content = m.group(1).strip()
@@ -76,6 +94,83 @@ class Instantiator:
             raise InstantiationError(f"Invalid expression '${{{expr}}}': {e}") from e
         return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
 
+    # --- Topological instantiation ---
+    def _instantiate_topologically(
+        self, config: dict[str, Any], graph: dict[str, set[str]], schema_model: type[BaseModel] | None = None
+    ) -> dict[str, Any]:
+        try:
+            order = list(TopologicalSorter(graph).static_order())
+        except CycleError as e:
+            raise InstantiationError(f"Circular reference detected in configuration: {e}") from e
+
+        top_level_types = self._get_model_field_types(schema_model)
+        resolved_config: dict[str, Any] = {}
+        for key in order:
+            try:
+                resolved_config[key] = self._instantiate_node(
+                    config[key], resolved_config, schema_type=top_level_types.get(key)
+                )
+            except InstantiationError:
+                raise
+            except Exception as e:
+                raise InstantiationError(f"Unexpected error while processing config key '{key}': {e}") from e
+
+        return resolved_config
+
+    def _instantiate_node(self, node: Any, resolved_config: dict[str, Any], schema_type: Any = None) -> Any:
+        if isinstance(node, str) and (m := _PLACEHOLDER_PATTERN.fullmatch(node)):
+            content = m.group(1).strip()
+            if _SIMPLE_PATH_RE.match(content):
+                result = self._resolve_path(content, resolved_config)
+            else:
+                result = self._evaluate_expression(content, resolved_config)
+            return self._try_cast(result, schema_type)
+
+        if isinstance(node, dict):
+            if "_target_type_" in node:
+                return self._instantiate_target(node, resolved_config, schema_type)
+            return self._instantiate_dict(node, resolved_config, schema_type)
+
+        if isinstance(node, list):
+            return self._instantiate_list(node, resolved_config, schema_type)
+
+        return self._try_cast(node, schema_type)
+
+    # --- Node-type handlers ---
+    def _instantiate_target(self, node: dict[str, Any], resolved_config: dict[str, Any], schema_type: Any) -> Any:
+        target = node["_target_type_"]
+        cls: Any = self._loader.load_class(target)
+        arg_types = self._get_model_field_types(schema_type)
+        resolved_args = {
+            k: self._instantiate_node(v, resolved_config, schema_type=arg_types.get(k))
+            for k, v in node.get("_init_args_", {}).items()
+        }
+        init_method_name = node.get("_init_method_")
+        if init_method_name:
+            factory = getattr(cls, init_method_name)
+            if not callable(factory):
+                raise InstantiationError(f"'{init_method_name}' is not callable on {cls}")
+            error_context = f"'{target}' via '{init_method_name}'"
+        else:
+            factory = cls
+            error_context = f"'{target}'"
+        try:
+            return factory(**resolved_args)
+        except Exception as e:
+            raise InstantiationError(f"Failed to instantiate {error_context}: {e}") from e
+
+    def _instantiate_dict(self, node: dict[str, Any], resolved_config: dict[str, Any], schema_type: Any) -> Any:
+        field_types = self._get_model_field_types(schema_type)
+        result = {
+            k: self._instantiate_node(v, resolved_config, schema_type=field_types.get(k)) for k, v in node.items()
+        }
+        return self._try_cast(result, schema_type)
+
+    def _instantiate_list(self, node: list[Any], resolved_config: dict[str, Any], schema_type: Any) -> list[Any]:
+        elem_type = self._get_list_element_type(schema_type)
+        return [self._instantiate_node(i, resolved_config, schema_type=elem_type) for i in node]
+
+    # --- Path resolution & expression evaluation ---
     def _resolve_path(self, path: str, resolved_config: dict[str, Any]) -> Any:
         """
         Example:
@@ -101,20 +196,6 @@ class Instantiator:
                 10
         """
 
-        def _obj_repr(obj: Any) -> str:
-            if isinstance(obj, dict):
-                return f"dict with keys {list(obj.keys())}"
-            return type(obj).__name__
-
-        def _get_attr(obj: Any, name: str) -> Any:
-            if isinstance(obj, dict):
-                if name in obj:
-                    return obj[name]
-                raise InstantiationError(f"Key '{name}' not found in {_obj_repr(obj)}")
-            if hasattr(obj, name):
-                return getattr(obj, name)
-            raise InstantiationError(f"Cannot resolve '{name}' on {_obj_repr(obj)}")
-
         parts = path.split(".")
         try:
             current = resolved_config[parts[0]]
@@ -135,7 +216,7 @@ class Instantiator:
 
         return current
 
-    def _attr_to_path(self, node: ast.Attribute) -> str:
+    def _ast_attr_to_path(self, node: ast.Attribute) -> str:
         parts: list[str] = []
         current: ast.expr = node
         while isinstance(current, ast.Attribute):
@@ -145,101 +226,36 @@ class Instantiator:
             parts.append(current.id)
         return ".".join(reversed(parts))
 
-    def _eval_node(self, node: ast.expr, expr: str, resolved_config: dict[str, Any]) -> Any:
+    def _evaluate_expression(self, expr: str, resolved_config: dict[str, Any]) -> Any:
+        try:
+            tree = ast.parse(expr, mode="eval")
+        except SyntaxError as e:
+            raise InstantiationError(f"Invalid expression '${{{expr}}}': {e}") from e
+        return self._eval_ast_node(tree.body, expr, resolved_config)
+
+    def _eval_ast_node(self, node: ast.expr, expr: str, resolved_config: dict[str, Any]) -> Any:
         if isinstance(node, ast.Constant):
             return node.value
         if isinstance(node, ast.Name):
             return self._resolve_path(node.id, resolved_config)
         if isinstance(node, ast.Attribute):
-            return self._resolve_path(self._attr_to_path(node), resolved_config)
+            return self._resolve_path(self._ast_attr_to_path(node), resolved_config)
         if isinstance(node, ast.BinOp):
-            left = self._eval_node(node.left, expr, resolved_config)
-            right = self._eval_node(node.right, expr, resolved_config)
+            left = self._eval_ast_node(node.left, expr, resolved_config)
+            right = self._eval_ast_node(node.right, expr, resolved_config)
             op_func = _BINARY_OPS.get(type(node.op))
             if op_func is None:
                 raise InstantiationError(f"Unsupported operator in '${{{expr}}}'")
             return op_func(left, right)
         if isinstance(node, ast.UnaryOp):
-            operand = self._eval_node(node.operand, expr, resolved_config)
+            operand = self._eval_ast_node(node.operand, expr, resolved_config)
             unary_op_func = _UNARY_OPS.get(type(node.op))
             if unary_op_func is None:
                 raise InstantiationError(f"Unsupported operator in '${{{expr}}}'")
             return unary_op_func(operand)
         raise InstantiationError(f"Unsupported operation '{type(node).__name__}' in '${{{expr}}}'")
 
-    def _evaluate_expression(self, expr: str, resolved_config: dict[str, Any]) -> Any:
-        try:
-            tree = ast.parse(expr, mode="eval")
-        except SyntaxError as e:
-            raise InstantiationError(f"Invalid expression '${{{expr}}}': {e}") from e
-        return self._eval_node(tree.body, expr, resolved_config)
-
-    def _instantiate_obj(self, node: Any, resolved_config: dict[str, Any], schema_type: Any = None) -> Any:
-        if isinstance(node, str) and (m := PLACEHOLDER_PATTERN.fullmatch(node)):
-            content = m.group(1).strip()
-            if _SIMPLE_PATH_RE.match(content):
-                result = self._resolve_path(content, resolved_config)
-            else:
-                result = self._evaluate_expression(content, resolved_config)
-            return self._try_cast(result, schema_type)
-
-        if isinstance(node, dict):
-            if "_target_type_" in node:
-                target = node["_target_type_"]
-                cls: Any = self._loader.load_class(target)
-                arg_types = self._get_model_field_types(schema_type)
-                resolved_args = {
-                    k: self._instantiate_obj(v, resolved_config, schema_type=arg_types.get(k))
-                    for k, v in node.get("_init_args_", {}).items()
-                }
-                init_method_name = node.get("_init_method_")
-                if init_method_name:
-                    factory = getattr(cls, init_method_name)
-                    if not callable(factory):
-                        raise InstantiationError(f"'{init_method_name}' is not callable on {cls}")
-                    error_context = f"'{target}' via '{init_method_name}'"
-                else:
-                    factory = cls
-                    error_context = f"'{target}'"
-                try:
-                    return factory(**resolved_args)
-                except Exception as e:
-                    raise InstantiationError(f"Failed to instantiate {error_context}: {e}") from e
-
-            field_types = self._get_model_field_types(schema_type)
-            result = {
-                k: self._instantiate_obj(v, resolved_config, schema_type=field_types.get(k)) for k, v in node.items()
-            }
-            return self._try_cast(result, schema_type)
-
-        if isinstance(node, list):
-            elem_type = self._get_list_element_type(schema_type)
-            return [self._instantiate_obj(i, resolved_config, schema_type=elem_type) for i in node]
-
-        return self._try_cast(node, schema_type)
-
-    def _instantiate_topologically(
-        self, config: dict[str, Any], graph: dict[str, set[str]], schema_model: type[BaseModel] | None = None
-    ) -> dict[str, Any]:
-        try:
-            order = list(TopologicalSorter(graph).static_order())
-        except CycleError as e:
-            raise InstantiationError(f"Circular reference detected in configuration: {e}") from e
-
-        top_level_types = self._get_model_field_types(schema_model)
-        resolved_config: dict[str, Any] = {}
-        for key in order:
-            try:
-                resolved_config[key] = self._instantiate_obj(
-                    config[key], resolved_config, schema_type=top_level_types.get(key)
-                )
-            except InstantiationError:
-                raise
-            except Exception as e:
-                raise InstantiationError(f"Unexpected error while processing config key '{key}': {e}") from e
-
-        return resolved_config
-
+    # --- Schema utilities ---
     @staticmethod
     def _try_cast(value: Any, schema_type: Any) -> Any:
         if schema_type is None:
@@ -249,7 +265,8 @@ class Instantiator:
                 return schema_type.model_validate(value)
             adapter = TypeAdapter(schema_type, config=ConfigDict(arbitrary_types_allowed=True))
             return adapter.validate_python(value)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to cast {value!r} to {schema_type}: {e}")
             return value
 
     @staticmethod
