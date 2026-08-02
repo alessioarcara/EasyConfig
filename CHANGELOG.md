@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-02
+
+### Added
+- Partial list overrides: a `...` marker in an override list patches single elements (matched by `_id_` or `_target_type_`) while keeping the rest; `_delete_: true` removes an element (#57)
+
 ## [0.1.14] - 2026-07-18
 
 ### Added

@@ -8,3 +8,7 @@ class SchemaError(EasyConfigError):
 
 class InstantiationError(EasyConfigError):
     """Raised when object instantiation or configuration validation fails."""
+
+
+class MergeError(EasyConfigError):
+    """Raised when a list patch (`...` marker) is malformed or cannot be applied."""
