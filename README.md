@@ -183,7 +183,7 @@ cfg = ConfigBuilder.from_files(
 )
 ```
 
-Patch a single list element instead of restating the whole list — `...` keeps the other elements:
+Patch a single list element instead of restating the whole list - `...` keeps the other elements:
 
 ```yaml
 callbacks:
