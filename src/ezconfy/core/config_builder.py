@@ -17,11 +17,6 @@ _REST_MARKER = "..."
 _ID_KEY = "_id_"
 _DELETE_KEY = "_delete_"
 
-# Reserved tokens for patching lists during merge (see `_merge_list`).
-_REST_MARKER = "..."
-_ID_KEY = "_id_"
-_DELETE_KEY = "_delete_"
-
 
 class ConfigBuilder:
     def __init__(self, schema_yaml: str | None = None) -> None:
