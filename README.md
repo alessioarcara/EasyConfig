@@ -183,6 +183,16 @@ cfg = ConfigBuilder.from_files(
 )
 ```
 
+Patch a single list element instead of restating the whole list — `...` keeps the other elements:
+
+```yaml
+callbacks:
+  - ...
+  - _id_: early_stopping
+    _init_args_:
+      patience: 20
+```
+
 ## Code Generation CLI
 
 Generate a Pydantic model file from a schema for editor autocompletion and static analysis:

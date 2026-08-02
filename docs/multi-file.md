@@ -113,7 +113,81 @@ Nested dictionaries are merged recursively, not replaced entirely:
     ```
 
 !!! note
-    Non-dict values (scalars, lists) are fully replaced by the later file.
+    Non-dict values (scalars, lists) are fully replaced by the later file — unless the later list uses the `...` patch marker described below.
+
+---
+
+## Patching Lists
+
+Replacing a whole list just to tweak one element forces you to restate every other element. Instead, add `...` to the override list to switch it to **patch mode**: `...` expands to the base elements, and the other entries patch, add, or delete individual elements.
+
+=== "base.yaml"
+
+    ```yaml
+    callbacks:
+      - _id_: early
+        _target_type_: my_pkg.callbacks:EarlyStopping
+        _init_args_:
+          patience: 5
+      - _id_: ckpt
+        _target_type_: my_pkg.callbacks:Checkpoint
+        _init_args_:
+          save_top_k: 3
+    ```
+
+=== "override.yaml"
+
+    ```yaml
+    callbacks:
+      - ...
+      - _id_: early
+        _init_args_:
+          patience: 20
+    ```
+
+=== "Result"
+
+    ```yaml
+    callbacks:
+      - _target_type_: my_pkg.callbacks:EarlyStopping
+        _init_args_:
+          patience: 20      # patched
+      - _target_type_: my_pkg.callbacks:Checkpoint
+        _init_args_:
+          save_top_k: 3     # untouched
+    ```
+
+### Matching Rules
+
+A patch entry is matched against base elements:
+
+1. **By `_id_`** — if the entry has an `_id_`, it matches the base element with the same `_id_`. Ids exist only for matching and are stripped from the final config.
+2. **By `_target_type_`** — otherwise, it matches the first not-yet-matched base element with the same target. Two patch entries with the same target patch the first and second occurrence, in order.
+
+Matched elements are deep-merged **in place** — they keep their position in the base list, so execution order is preserved. Entries that match nothing are inserted as new elements: before `...` to prepend, after `...` to append.
+
+```yaml
+callbacks:
+  - _target_type_: my_pkg.callbacks:ProfilerStart   # new, prepended
+  - ...
+  - _target_type_: my_pkg.callbacks:ProfilerStop    # new, appended
+```
+
+### Deleting Elements
+
+Mark an entry with `_delete_: true` to remove the matched element (same matching rules):
+
+```yaml
+callbacks:
+  - ...
+  - _id_: early
+    _delete_: true
+```
+
+A `_delete_` entry that matches nothing raises a `MergeError` — typos fail loudly instead of silently keeping the element.
+
+!!! note
+    Patch mode works identically in override files and in the programmatic `overrides` dictionary (use the string `"..."` there). A list may contain at most one `...` marker.
 
 ---
 

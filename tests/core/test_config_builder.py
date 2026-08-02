@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 
 from ezconfy.core.config_builder import ConfigBuilder
+from ezconfy.core.exceptions import MergeError
 
 
 def _write_temp_yaml(tmpdir: Path, content: str, name: str = "config.yaml") -> Path:
@@ -144,6 +145,204 @@ training:
     assert dataset.num_classes == 50
     assert built_config["training"]["batch_size"] == 64
     assert built_config["training"]["epochs"] == 10
+
+
+def test_list_patch_by_id_keeps_rest_and_order(tmp_path: Path) -> None:
+    base = """
+steps:
+    - _id_: resize
+      size: 224
+    - _id_: normalize
+      mean: 0.5
+"""
+    override = """
+steps:
+    - ...
+    - _id_: resize
+      size: 512
+"""
+    file1 = _write_temp_yaml(tmp_path, base, "base.yaml")
+    file2 = _write_temp_yaml(tmp_path, override, "override.yaml")
+
+    built_config: Any = ConfigBuilder.from_files(config_paths=[file1, file2])
+
+    steps = built_config["steps"]
+    assert steps == [{"size": 512}, {"mean": 0.5}]
+
+
+def test_list_patch_by_target_duplicates_consumed_in_order(fake_dataset_package: str, tmp_path: Path) -> None:
+    base = f"""
+datasets:
+    - _target_type_: {fake_dataset_package}.dataset:FakeDataset
+      _init_args_:
+          num_classes: 100
+    - _target_type_: {fake_dataset_package}.dataset:FakeDataset
+      _init_args_:
+          num_classes: 50
+"""
+    override = f"""
+datasets:
+    - ...
+    - _target_type_: {fake_dataset_package}.dataset:FakeDataset
+      _init_args_:
+          num_classes: 1
+    - _target_type_: {fake_dataset_package}.dataset:FakeDataset
+      _init_args_:
+          num_classes: 2
+"""
+    file1 = _write_temp_yaml(tmp_path, base, "base.yaml")
+    file2 = _write_temp_yaml(tmp_path, override, "override.yaml")
+
+    built_config: Any = ConfigBuilder.from_files(config_paths=[file1, file2])
+
+    datasets = built_config["datasets"]
+    assert [d.num_classes for d in datasets] == [1, 2]
+
+
+def test_list_patch_delete_by_id_and_by_target(tmp_path: Path) -> None:
+    base = """
+callbacks:
+    - _id_: early
+      _target_type_: pkg:EarlyStopping
+    - _target_type_: pkg:Checkpoint
+    - _id_: keep
+      note: survivor
+"""
+    override = """
+callbacks:
+    - ...
+    - _id_: early
+      _delete_: true
+    - _target_type_: pkg:Checkpoint
+      _delete_: true
+"""
+    file1 = _write_temp_yaml(tmp_path, base, "base.yaml")
+    file2 = _write_temp_yaml(tmp_path, override, "override.yaml")
+
+    built_config: Any = ConfigBuilder.from_files(config_paths=[file1, file2])
+
+    assert built_config["callbacks"] == [{"note": "survivor"}]
+
+
+def test_list_patch_delete_without_match_raises(tmp_path: Path) -> None:
+    base = """
+callbacks:
+    - _id_: early
+      patience: 5
+"""
+    override = """
+callbacks:
+    - ...
+    - _id_: missing
+      _delete_: true
+"""
+    file1 = _write_temp_yaml(tmp_path, base, "base.yaml")
+    file2 = _write_temp_yaml(tmp_path, override, "override.yaml")
+
+    with pytest.raises(MergeError) as exc_info:
+        ConfigBuilder.from_files(config_paths=[file1, file2])
+    assert "_delete_" in str(exc_info.value)
+
+
+def test_list_patch_new_elements_prepended_and_appended(tmp_path: Path) -> None:
+    base = """
+steps:
+    - name: middle
+"""
+    override = """
+steps:
+    - name: first
+    - ...
+    - name: last
+"""
+    file1 = _write_temp_yaml(tmp_path, base, "base.yaml")
+    file2 = _write_temp_yaml(tmp_path, override, "override.yaml")
+
+    built_config: Any = ConfigBuilder.from_files(config_paths=[file1, file2])
+
+    assert [s["name"] for s in built_config["steps"]] == ["first", "middle", "last"]
+
+
+def test_list_without_rest_marker_fully_replaced(tmp_path: Path) -> None:
+    base = """
+steps:
+    - name: one
+    - name: two
+"""
+    override = """
+steps:
+    - name: three
+"""
+    file1 = _write_temp_yaml(tmp_path, base, "base.yaml")
+    file2 = _write_temp_yaml(tmp_path, override, "override.yaml")
+
+    built_config: Any = ConfigBuilder.from_files(config_paths=[file1, file2])
+
+    assert built_config["steps"] == [{"name": "three"}]
+
+
+def test_list_patch_multiple_rest_markers_raise(tmp_path: Path) -> None:
+    base = """
+steps:
+    - name: one
+"""
+    override = """
+steps:
+    - ...
+    - ...
+"""
+    file1 = _write_temp_yaml(tmp_path, base, "base.yaml")
+    file2 = _write_temp_yaml(tmp_path, override, "override.yaml")
+
+    with pytest.raises(MergeError) as exc_info:
+        ConfigBuilder.from_files(config_paths=[file1, file2])
+    assert "at most one" in str(exc_info.value)
+
+
+def test_list_patch_via_overrides_dict(tmp_path: Path) -> None:
+    base = """
+steps:
+    - _id_: resize
+      size: 224
+    - _id_: normalize
+      mean: 0.5
+"""
+    overrides = {"steps": ["...", {"_id_": "resize", "size": 512}]}
+    file1 = _write_temp_yaml(tmp_path, base, "base.yaml")
+
+    built_config: Any = ConfigBuilder.from_files(config_paths=file1, overrides=overrides)
+
+    assert built_config["steps"] == [{"size": 512}, {"mean": 0.5}]
+
+
+def test_list_patch_instantiates_patched_element(fake_dataset_package: str, tmp_path: Path) -> None:
+    base = f"""
+datasets:
+    - _id_: train
+      _target_type_: {fake_dataset_package}.dataset:FakeDataset
+      _init_args_:
+          num_classes: 100
+    - _id_: val
+      _target_type_: {fake_dataset_package}.dataset:FakeDataset
+      _init_args_:
+          num_classes: 50
+"""
+    override = """
+datasets:
+    - ...
+    - _id_: val
+      _init_args_:
+          num_classes: 25
+"""
+    file1 = _write_temp_yaml(tmp_path, base, "base.yaml")
+    file2 = _write_temp_yaml(tmp_path, override, "override.yaml")
+
+    built_config: Any = ConfigBuilder.from_files(config_paths=[file1, file2])
+
+    datasets = built_config["datasets"]
+    assert datasets[0].__class__.__name__ == "FakeDataset"
+    assert datasets[0].num_classes == 100
+    assert datasets[1].num_classes == 25
 
 
 def test_should_instantiate_with_placeholder(fake_dataset_package: str, tmp_path: Path) -> None:
